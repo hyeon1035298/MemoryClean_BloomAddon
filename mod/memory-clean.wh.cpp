@@ -2,7 +2,7 @@
 // @id              memory-clean
 // @name            Memory Clean
 // @description     Memory use next to the taskbar clock; frees memory and ends programs
-// @version         0.1.2
+// @version         0.1.3
 // @author          Hyeon
 // @include         explorer.exe
 // @architecture    x86-64
@@ -2137,13 +2137,10 @@ void SetRowBar(Row& r, double fraction) {
     r.bar.Set(fraction, g_prefs.sortCpu && r.cpu >= 30 ? c.warn : c.accent);
 }
 
-wux::UIElement BuildPrograms() {
-    auto& p = *g_panel;
-    const Palette& c = *p.c;
-    auto page = VStack(0);
-
-    auto tools = Columns({-1, 0}, 6);
-    tools.Margin({0, 10, 0, 0});
+// A w8 search field, height 28: `changed` gets the lower-cased text as it is typed.
+// `focus` puts the caret in it once it is on screen.
+wuxc::Border SearchField(const Palette& c, const std::wstring& text, std::function<void(const std::wstring&)> changed,
+                         bool focus = false) {
     auto search = Box(8, Ink(c, 8));
     search.Height(28);
     search.Padding({10, 0, 10, 0});
@@ -2152,16 +2149,29 @@ wux::UIElement BuildPrograms() {
     wuxc::TextBox box;
     StyleTextBox(box, c);
     box.PlaceholderText(T(L"찾기", L"Find"));
-    box.Text(p.filter);
-    Keep(box.TextChanged(winrt::auto_revoke, [box](auto&&, auto&&) {
-        if (!g_panel) return;
-        g_panel->filter = Lower(std::wstring(box.Text()));
-        RefreshPrograms();
+    box.Text(text);
+    Keep(box.TextChanged(winrt::auto_revoke, [box, changed](auto&&, auto&&) {
+        if (g_panel) changed(Lower(std::wstring(box.Text())));
     }));
+    if (focus)
+        Keep(box.Loaded(winrt::auto_revoke, [box](auto&&, auto&&) { box.Focus(wux::FocusState::Programmatic); }));
     searchRow.Children().Append(InColumn(box, 1));
     search.Child(searchRow);
     OnClick(search, [box] { box.Focus(wux::FocusState::Programmatic); });
-    tools.Children().Append(search);
+    return search;
+}
+
+wux::UIElement BuildPrograms() {
+    auto& p = *g_panel;
+    const Palette& c = *p.c;
+    auto page = VStack(0);
+
+    auto tools = Columns({-1, 0}, 6);
+    tools.Margin({0, 10, 0, 0});
+    tools.Children().Append(SearchField(c, p.filter, [](const std::wstring& text) {
+        g_panel->filter = text;
+        RefreshPrograms();
+    }));
     auto sort = MakeSegment({T(L"메모리순", L"Memory"), T(L"CPU순", L"CPU")}, false, 24, g_prefs.sortCpu ? 1 : 0,
                             [](int i) {
                                 g_prefs.sortCpu = i == 1;
@@ -2606,11 +2616,18 @@ wux::UIElement BuildSettings() {
 }
 
 // Running programs to leave alone: one snapshot, a press adds.
+// Running programs to pick from, narrowed by name or file name as the search is typed.
 wux::UIElement BuildPicker() {
     auto& p = *g_panel;
     const Palette& c = *p.c;
     auto page = VStack(1);
-    page.Margin({0, 8, 0, 0});
+    struct Entry {
+        wuxc::Border row;
+        std::wstring text;  // lower-case label and file name
+    };
+    auto entries = std::make_shared<std::vector<Entry>>();
+    auto none = Help(T(L"찾는 프로그램이 없습니다", L"No program matches"));
+    none.Visibility(wux::Visibility::Collapsed);
     std::map<std::wstring, std::wstring> names;
     for (auto& proc : Snapshot(p.buffer)) {
         std::wstring key = Lower(proc.name);
@@ -2638,8 +2655,22 @@ wux::UIElement BuildPicker() {
             ShowPage(Page::kSettings);
         });
         page.Children().Append(row);
+        entries->push_back({row, Lower(label) + L"\n" + key});
     }
-    return Scrolled(page, 480);
+    page.Children().Append(none);
+    auto frame = VStack(8);
+    frame.Margin({0, 8, 0, 0});
+    frame.Children().Append(SearchField(c, L"", [entries, none](const std::wstring& text) {
+        bool any = false;
+        for (auto& e : *entries) {
+            bool shown = text.empty() || e.text.find(text) != std::wstring::npos;
+            e.row.Visibility(shown ? wux::Visibility::Visible : wux::Visibility::Collapsed);
+            any |= shown;
+        }
+        none.Visibility(any || entries->empty() ? wux::Visibility::Collapsed : wux::Visibility::Visible);
+    }, true));
+    frame.Children().Append(Scrolled(page, 444));
+    return frame;
 }
 
 // ---- the frame ---------------------------------------------------------------------
