@@ -1,0 +1,14 @@
+# Sources, scripts and the workflow use LF on every platform.
+* text=auto eol=lf
+*.cpp text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.conf text eol=lf
+LICENSE text eol=lf
+
+# Binaries are never converted.
+*.dll binary
+*.exe binary
+*.zip binary
