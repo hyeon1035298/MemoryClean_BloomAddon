@@ -2,7 +2,7 @@
 // @id              memory-clean
 // @name            Memory Clean
 // @description     Memory use next to the taskbar clock; frees memory and ends programs
-// @version         0.1.0
+// @version         0.1.1
 // @author          Hyeon
 // @include         explorer.exe
 // @architecture    x86-64
@@ -222,7 +222,9 @@ struct Prefs {
     bool autoIntervalOn = false;
     int autoMinutes = 30;
     bool sortCpu = false;
-    std::vector<std::wstring> exclude;  // lower-case file names, "chrome.exe"
+    // Lower-case file names, "chrome.exe". Bloom is left alone from the start, so the
+    // launcher opens at once after a clean.
+    std::vector<std::wstring> exclude{L"bloom.exe"};
     uint64_t lastCleanAt = 0;           // FILETIME, UTC
     uint64_t lastFreed = 0;             // bytes
 };
@@ -233,8 +235,15 @@ bool PlainExeName(const std::wstring& name) {
            name.size() > 4 && Lower(name).ends_with(L".exe");
 }
 
+// Version 2 added Bloom to the exclusions; an older file gets it once. A missing or older
+// file is written at once, so the helper reads the same list.
+constexpr int kPrefsVersion = 2;
+
+void SavePrefs();
+
 void LoadPrefs() {
     Prefs p;
+    bool older = true;
     if (auto o = ParseObject(ReadText(DataDir() + L"\\" + kPrefsFile))) {
         auto& obj = *o;
         p.icon = IconStyle(std::clamp(int(obj.GetNamedNumber(L"icon", 1)), 0, 2));
@@ -246,7 +255,9 @@ void LoadPrefs() {
         p.sortCpu = obj.GetNamedBoolean(L"sortCpu", false);
         p.lastCleanAt = uint64_t(obj.GetNamedNumber(L"lastCleanAt", 0));
         p.lastFreed = uint64_t(obj.GetNamedNumber(L"lastFreed", 0));
+        older = int(obj.GetNamedNumber(L"v", 1)) < kPrefsVersion;
         if (auto list = obj.TryLookup(L"exclude"); list && list.ValueType() == wdj::JsonValueType::Array) {
+            if (!older) p.exclude.clear();
             for (auto v : list.GetArray()) {
                 if (v.ValueType() != wdj::JsonValueType::String) continue;
                 std::wstring name = Lower(std::wstring(v.GetString()));
@@ -257,12 +268,13 @@ void LoadPrefs() {
         }
     }
     g_prefs = p;
+    if (older) SavePrefs();
 }
 
 void SavePrefs() {
     wdj::JsonObject obj;
     auto& p = g_prefs;
-    obj.SetNamedValue(L"v", wdj::JsonValue::CreateNumberValue(1));
+    obj.SetNamedValue(L"v", wdj::JsonValue::CreateNumberValue(kPrefsVersion));
     obj.SetNamedValue(L"icon", wdj::JsonValue::CreateNumberValue(int(p.icon)));
     obj.SetNamedValue(L"areas", wdj::JsonValue::CreateNumberValue(p.areas));
     obj.SetNamedValue(L"autoPercentOn", wdj::JsonValue::CreateBooleanValue(p.autoPercentOn));
@@ -533,7 +545,16 @@ UINT RunMsg() {
     return msg;
 }
 
+// An auto-hiding taskbar stays out while the window is open on it, as it does for
+// Windows' own tray windows: the tray's hide check (timer 2, as TrayUI::_SetAutoHideTimer
+// sets it) skips its ticks then. While the taskbar is in front Windows keeps it out by
+// itself, so those ticks go on.
+constexpr UINT_PTR kTrayHideTimer = 2;
+HWND g_holdTaskbar;  // taskbar thread
+
 LRESULT CALLBACK TaskbarSubclass(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, DWORD_PTR) {
+    if (msg == WM_TIMER && wParam == kTrayHideTimer && hwnd == g_holdTaskbar && GetForegroundWindow() != hwnd)
+        return 0;
     if (msg == RunMsg() && lParam) {
         try {
             (*(std::function<void()>*)lParam)();
@@ -546,6 +567,17 @@ LRESULT CALLBACK TaskbarSubclass(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 }
 
 HWND g_subclassed;
+
+// Holds `taskbar` out (null lets go). Called on the taskbar thread.
+void HoldTaskbar(HWND taskbar) {
+    if (g_holdTaskbar == taskbar) return;
+    if (g_holdTaskbar && g_holdTaskbar != g_subclassed)
+        WindhawkUtils::RemoveWindowSubclassFromAnyThread(g_holdTaskbar, TaskbarSubclass);
+    g_holdTaskbar = nullptr;
+    if (taskbar && (taskbar == g_subclassed ||
+                    WindhawkUtils::SetWindowSubclassFromAnyThread(taskbar, TaskbarSubclass, 0)))
+        g_holdTaskbar = taskbar;
+}
 
 // Runs `work` on the window's thread and waits for it.
 bool RunOn(HWND hwnd, std::function<void()> work) {
@@ -2709,6 +2741,7 @@ void ClosePanel() {
     if (!g_panel) return;
     auto panel = std::move(g_panel);
     g_panelClosedAt = GetTickCount64();
+    HoldTaskbar(nullptr);
     ReleaseHandlers();
     try {
         if (panel->flyout) panel->flyout.Hide();
@@ -2774,6 +2807,7 @@ void TogglePanel(Widget& w) {
     }
     if (GetTickCount64() - g_panelClosedAt < 300) return;  // the press that just closed it
     CloseOtherFlyouts();
+    HoldTaskbar(w.taskbar);
     g_panel = std::make_unique<PanelState>();
     auto& p = *g_panel;
     p.taskbar = w.taskbar;
@@ -2808,13 +2842,29 @@ void TogglePanel(Widget& w) {
         if (g_panel && g_panel->flyout == sender.try_as<wuxc::Flyout>()) {
             g_panel.reset();
             g_panelClosedAt = GetTickCount64();
+            HoldTaskbar(nullptr);
             ReleaseHandlers();
         }
     });
     ShowPage(Page::kClean);
+    // The window opens kGap clear of the taskbar's edge, not of the widget in its middle:
+    // the widget's distance to that edge is measured in the taskbar's XAML root.
+    constexpr double kGap = 8;
     bool below = TaskbarOnTop(w.taskbar);
+    double toEdge = 0;
+    try {
+        if (auto root = w.root.XamlRoot()) {
+            auto box = w.root.TransformToVisual(nullptr).TransformBounds(
+                {0, 0, float(w.root.ActualWidth()), float(w.root.ActualHeight())});
+            toEdge = std::max(0.0, below ? root.Size().Height - (box.Y + box.Height) : double(box.Y));
+        }
+    } catch (...) {
+    }
     wuxc::Primitives::FlyoutShowOptions options;
     options.Placement(below ? wuxc::Primitives::FlyoutPlacementMode::Bottom : wuxc::Primitives::FlyoutPlacementMode::Top);
+    options.Position(wf::IReference<wf::Point>(wf::Point{
+        float(w.root.ActualWidth() / 2),
+        float(below ? w.root.ActualHeight() + toEdge + kGap : -(toEdge + kGap))}));
     p.flyout.ShowAt(w.root, options);
     Worker([] {
         CheckHelper();
