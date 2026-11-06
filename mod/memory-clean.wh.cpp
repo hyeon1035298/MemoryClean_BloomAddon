@@ -2,7 +2,7 @@
 // @id              memory-clean
 // @name            Memory Clean
 // @description     Memory use next to the taskbar clock; frees memory and ends programs
-// @version         0.1.1
+// @version         0.1.2
 // @author          Hyeon
 // @include         explorer.exe
 // @architecture    x86-64
@@ -2849,21 +2849,33 @@ void TogglePanel(Widget& w) {
     ShowPage(Page::kClean);
     // The window opens kGap clear of the taskbar's edge, not of the widget in its middle:
     // the widget's distance to that edge is measured in the taskbar's XAML root.
+    // Sideways it is centred on the widget but kept kGap inside the monitor, as Windows'
+    // tray windows are near the screen's corner.
     constexpr double kGap = 8;
     bool below = TaskbarOnTop(w.taskbar);
-    double toEdge = 0;
+    double toEdge = 0, shift = 0;
     try {
         if (auto root = w.root.XamlRoot()) {
             auto box = w.root.TransformToVisual(nullptr).TransformBounds(
                 {0, 0, float(w.root.ActualWidth()), float(w.root.ActualHeight())});
             toEdge = std::max(0.0, below ? root.Size().Height - (box.Y + box.Height) : double(box.Y));
+            RECT bar{};
+            MONITORINFO mi{sizeof(mi)};
+            double scale = root.RasterizationScale();
+            if (scale > 0 && GetWindowRect(w.taskbar, &bar) &&
+                GetMonitorInfoW(MonitorFromWindow(w.taskbar, MONITOR_DEFAULTTONEAREST), &mi)) {
+                double center = bar.left / scale + box.X + box.Width / 2, half = p.bubble.Width() / 2;
+                double left = mi.rcMonitor.left / scale + kGap, right = mi.rcMonitor.right / scale - kGap;
+                if (center + half > right) shift = right - (center + half);
+                if (center + shift - half < left) shift = left - (center - half);
+            }
         }
     } catch (...) {
     }
     wuxc::Primitives::FlyoutShowOptions options;
     options.Placement(below ? wuxc::Primitives::FlyoutPlacementMode::Bottom : wuxc::Primitives::FlyoutPlacementMode::Top);
     options.Position(wf::IReference<wf::Point>(wf::Point{
-        float(w.root.ActualWidth() / 2),
+        float(w.root.ActualWidth() / 2 + shift),
         float(below ? w.root.ActualHeight() + toEdge + kGap : -(toEdge + kGap))}));
     p.flyout.ShowAt(w.root, options);
     Worker([] {
