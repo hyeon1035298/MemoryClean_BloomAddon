@@ -97,7 +97,28 @@ jobs:
         run: |
           name="MemoryClean_BloomAddon-${GITHUB_REF_NAME//\//-}"
           (cd dist/MemoryClean_BloomAddon && 7z a -tzip "../${name}.zip" . >/dev/null)
+          echo "ZIP_NAME=${name}.zip" >> "$GITHUB_ENV"
           (cd dist && sha256sum "${name}.zip" | tee "${name}.zip.sha256")
+
+      # bloom-addon.json: how Bloom finds and checks this release. Bloom reads it from
+      # https://github.com/<repo>/releases/latest/download/bloom-addon.json, downloads the zip it names from
+      # the same release and installs it only when the zip has this sha256 and size and its addon.json this id,
+      # version and minBloom. A tag must be v<addon.json's version>: Bloom takes the zip from that tag.
+      - name: bloom-addon.json
+        run: |
+          python -I - "dist/${ZIP_NAME}" build/addon/addon.json "$GITHUB_REF" > dist/bloom-addon.json <<'PY'
+          import hashlib, json, os, sys
+          zip_path, manifest, ref = sys.argv[1:4]
+          with open(manifest, encoding="utf-8") as f:
+              m = json.load(f)
+          if ref.startswith("refs/tags/") and ref[len("refs/tags/"):] != "v" + m["version"]:
+              sys.exit(f"the tag {ref} is not v{m['version']}, the version addon.json gives")
+          with open(zip_path, "rb") as f:
+              data = f.read()
+          json.dump({"id": m["id"], "version": m["version"], "zip": os.path.basename(zip_path),
+                     "sha256": hashlib.sha256(data).hexdigest(), "size": len(data), "minBloom": m["minBloom"]}, sys.stdout, indent=2)
+          PY
+          cat dist/bloom-addon.json
 
       - uses: actions/upload-artifact@v4
         with:
@@ -105,6 +126,7 @@ jobs:
           path: |
             dist/*.zip
             dist/*.sha256
+            dist/bloom-addon.json
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
