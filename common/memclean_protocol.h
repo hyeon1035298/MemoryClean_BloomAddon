@@ -22,7 +22,7 @@ constexpr PCWSTR kTaskPrefix = L"MemoryClean ";
 
 // The add-on's data folder, below %LOCALAPPDATA%.
 constexpr PCWSTR kDataFolder = L"Bloom\\addons\\memory-clean";
-constexpr PCWSTR kPrefsFile = L"prefs.json";          // the mod writes, the helper reads "exclude"
+constexpr PCWSTR kPrefsFile = L"prefs.json";          // the mod and Bloom write, the helper reads "exclude"
 constexpr PCWSTR kResultFile = L"helper-result.json";  // the helper writes, the mod reads
 
 // Areas to clean, the bits of a clean request's mask.

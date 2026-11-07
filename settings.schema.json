@@ -1,0 +1,173 @@
+{
+  "schema": 1,
+  "groups": [
+    {
+      "id": "widget",
+      "name": { "ko": "위젯", "en": "Widget", "ja": "ウィジェット", "zh": "小组件" },
+      "items": [
+        {
+          "key": "widget.icon",
+          "type": "choice",
+          "file": "prefs.json",
+          "field": "icon",
+          "default": 1,
+          "options": [
+            { "value": 0, "name": { "ko": "선", "en": "Line", "ja": "線", "zh": "线条" } },
+            { "value": 1, "name": { "ko": "채움", "en": "Fill", "ja": "塗り", "zh": "填充" } },
+            { "value": 2, "name": { "ko": "꽉 채움", "en": "Solid", "ja": "べた塗り", "zh": "实心" } }
+          ],
+          "name": { "ko": "작업표시줄 아이콘", "en": "Taskbar icon", "ja": "タスクバーのアイコン", "zh": "任务栏图标" }
+        },
+        {
+          "key": "widget.refreshSeconds",
+          "type": "int",
+          "default": 2,
+          "min": 1,
+          "max": 10,
+          "name": { "ko": "새로 고침 간격(초)", "en": "Refresh interval (s)", "ja": "更新間隔 (s)", "zh": "刷新间隔 (s)" },
+          "about": {
+            "ko": "사용률을 다시 읽는 간격입니다",
+            "en": "How often the memory use is read again",
+            "ja": "メモリ使用率を読み直す間隔です",
+            "zh": "重新读取内存使用率的间隔"
+          }
+        }
+      ]
+    },
+    {
+      "id": "clean",
+      "name": { "ko": "정리할 곳", "en": "What to clean", "ja": "解放する場所", "zh": "清理范围" },
+      "items": [
+        {
+          "key": "clean.areas",
+          "type": "flags",
+          "file": "prefs.json",
+          "field": "areas",
+          "default": 103,
+          "min": 1,
+          "options": [
+            { "value": 1, "name": { "ko": "작업 집합", "en": "Working sets", "ja": "ワーキングセット", "zh": "工作集" } },
+            { "value": 2, "name": { "ko": "시스템 파일 캐시", "en": "System file cache", "ja": "システムファイルキャッシュ", "zh": "系统文件缓存" } },
+            { "value": 4, "name": { "ko": "낮은 우선순위 대기", "en": "Low-priority standby", "ja": "低優先度のスタンバイ", "zh": "低优先级备用" } },
+            { "value": 32, "name": { "ko": "메모리 합치기", "en": "Combine memory", "ja": "メモリの結合", "zh": "合并内存" } },
+            { "value": 64, "name": { "ko": "레지스트리 캐시", "en": "Registry cache", "ja": "レジストリキャッシュ", "zh": "注册表缓存" } },
+            { "value": 8, "name": { "ko": "대기 목록 전체", "en": "Whole standby list", "ja": "スタンバイリスト全体", "zh": "整个备用列表" } },
+            { "value": 16, "name": { "ko": "수정된 페이지", "en": "Modified pages", "ja": "変更されたページ", "zh": "已修改页面" } }
+          ],
+          "name": { "ko": "정리할 영역", "en": "Areas to clean", "ja": "解放する領域", "zh": "清理区域" },
+          "about": {
+            "ko": "지금 정리와 자동 정리에 씁니다. 대기 목록 전체와 수정된 페이지는 잠깐 멈칫할 수 있어 자동 정리에서는 빠집니다",
+            "en": "Used by cleaning now and automatic cleaning. The whole standby list and modified pages may stall a moment, so automatic cleaning leaves them out.",
+            "ja": "今すぐ解放と自動解放に使います。スタンバイリスト全体と変更されたページは一瞬止まることがあるため、自動解放では除きます。",
+            "zh": "用于立即清理和自动清理。整个备用列表和已修改页面可能会短暂卡顿，因此自动清理不包括它们。"
+          }
+        }
+      ]
+    },
+    {
+      "id": "auto",
+      "name": { "ko": "자동 정리", "en": "Automatic cleaning", "ja": "自動解放", "zh": "自动清理" },
+      "items": [
+        {
+          "key": "auto.percentOn",
+          "type": "bool",
+          "file": "prefs.json",
+          "field": "autoPercentOn",
+          "default": false,
+          "name": { "ko": "사용률 기준 자동 정리", "en": "Clean above a memory use", "ja": "使用率による自動解放", "zh": "按使用率自动清理" },
+          "about": {
+            "ko": "사용률이 기준을 넘으면 정리합니다. 30초에 한 번까지입니다",
+            "en": "Cleans when the memory use passes the limit, at most every 30 seconds.",
+            "ja": "使用率が基準を超えると解放します。30 秒に 1 回までです。",
+            "zh": "内存使用率超过阈值时清理，最多每 30 秒一次。"
+          }
+        },
+        {
+          "key": "auto.percent",
+          "type": "int",
+          "file": "prefs.json",
+          "field": "autoPercent",
+          "default": 90,
+          "min": 50,
+          "max": 99,
+          "name": { "ko": "기준 사용률 (%)", "en": "Memory use limit (%)", "ja": "基準の使用率 (%)", "zh": "使用率阈值 (%)" }
+        },
+        {
+          "key": "auto.intervalOn",
+          "type": "bool",
+          "file": "prefs.json",
+          "field": "autoIntervalOn",
+          "default": false,
+          "name": { "ko": "일정 간격 자동 정리", "en": "Clean every so often", "ja": "一定間隔の自動解放", "zh": "定时自动清理" }
+        },
+        {
+          "key": "auto.minutes",
+          "type": "int",
+          "file": "prefs.json",
+          "field": "autoMinutes",
+          "default": 30,
+          "min": 1,
+          "max": 1440,
+          "name": { "ko": "정리 간격(분)", "en": "Interval (min)", "ja": "解放の間隔 (min)", "zh": "清理间隔 (min)" }
+        }
+      ]
+    },
+    {
+      "id": "exclude",
+      "name": { "ko": "예외 프로그램", "en": "Programs left alone", "ja": "除外するプログラム", "zh": "排除的程序" },
+      "items": [
+        {
+          "key": "exclude.programs",
+          "type": "list",
+          "file": "prefs.json",
+          "field": "exclude",
+          "default": ["bloom.exe"],
+          "max": 200,
+          "suffix": ".exe",
+          "name": { "ko": "예외 프로그램", "en": "Programs left alone", "ja": "除外するプログラム", "zh": "排除的程序" },
+          "about": {
+            "ko": "여기 둔 프로그램은 정리할 때 작업 집합을 비우지 않습니다",
+            "en": "Programs listed here keep their working sets when memory is cleaned",
+            "ja": "ここにあるプログラムは、解放のときにワーキングセットを空けません",
+            "zh": "清理内存时不清空此处列出的程序的工作集"
+          }
+        }
+      ]
+    },
+    {
+      "id": "pill",
+      "name": { "ko": "모양", "en": "Look", "ja": "外観", "zh": "外观" },
+      "items": [
+        {
+          "key": "pill.theme",
+          "type": "choice",
+          "default": "system",
+          "options": [
+            { "value": "system", "name": { "ko": "Windows 작업표시줄 테마", "en": "Windows taskbar theme", "ja": "Windows タスクバーのテーマ", "zh": "Windows 任务栏主题" } },
+            { "value": "dark", "name": { "ko": "다크", "en": "Dark", "ja": "ダーク", "zh": "深色" } },
+            { "value": "light", "name": { "ko": "라이트", "en": "Light", "ja": "ライト", "zh": "浅色" } }
+          ],
+          "name": { "ko": "테마", "en": "Theme", "ja": "テーマ", "zh": "主题" },
+          "about": {
+            "ko": "위젯과 창의 라이트·다크. Bloom 애드온으로 쓰면 Bloom의 테마를 따릅니다",
+            "en": "Light or dark for the widget and its window. As a Bloom add-on it follows Bloom's theme",
+            "ja": "ウィジェットとウィンドウのライト・ダーク。Bloom のアドオンとして使うと Bloom のテーマに従います",
+            "zh": "小组件及其窗口的浅色或深色。作为 Bloom 加载项使用时跟随 Bloom 的主题"
+          }
+        },
+        {
+          "key": "pill.glass",
+          "type": "bool",
+          "default": true,
+          "name": { "ko": "유리 효과", "en": "Glass effect", "ja": "ガラス効果", "zh": "玻璃效果" },
+          "about": {
+            "ko": "끄면 창이 블러 없이 테마 색으로 칠해집니다",
+            "en": "When off, the window is filled in the theme's color without blur",
+            "ja": "オフにするとウィンドウをぼかさずテーマの色で塗ります",
+            "zh": "关闭后窗口不模糊，以主题颜色填充"
+          }
+        }
+      ]
+    }
+  ]
+}

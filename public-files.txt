@@ -11,7 +11,7 @@ mod/memory-clean.wh.cpp          the mod: widget, window, cleaning
 helper/helper.cpp                the optional admin helper
 common/memclean_protocol.h       names and requests the mod and helper share
 tools/add-files.py               adds the helper and schema to addon.json
-tools/names-en.tsv               English names for the settings page
+settings.schema.json              the settings page Bloom draws, by hand
 build.sh                         builds with PillTaskbar_BloomAddon's tools
 public-files.txt                 this list
 .github/workflows/build.yml      CI build and release zip

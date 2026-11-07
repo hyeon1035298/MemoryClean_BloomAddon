@@ -2,7 +2,7 @@
 // @id              memory-clean
 // @name            Memory Clean
 // @description     Memory use next to the taskbar clock; frees memory and ends programs
-// @version         0.1.4
+// @version         0.2.0
 // @author          Hyeon
 // @include         explorer.exe
 // @architecture    x86-64
@@ -243,8 +243,17 @@ constexpr int kPrefsVersion = 2;
 
 void SavePrefs();
 
+// Last write time of prefs.json (FILETIME), kept to notice another writer (Bloom's settings page).
+uint64_t g_prefsStamp = 0;
+uint64_t PrefsStamp() {
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if (!GetFileAttributesExW((DataDir() + L"\\" + kPrefsFile).c_str(), GetFileExInfoStandard, &data)) return 0;
+    return (uint64_t(data.ftLastWriteTime.dwHighDateTime) << 32) | data.ftLastWriteTime.dwLowDateTime;
+}
+
 void LoadPrefs() {
     Prefs p;
+    g_prefsStamp = PrefsStamp();  // before the read: a write in between shows as a change
     bool older = true;
     if (auto o = ParseObject(ReadText(DataDir() + L"\\" + kPrefsFile))) {
         auto& obj = *o;
@@ -292,6 +301,8 @@ void SavePrefs() {
     CreateDirectoryW(DataDir().c_str(), nullptr);
     if (!WriteText(DataDir() + L"\\" + kPrefsFile, std::wstring(obj.Stringify())))
         Wh_Log(L"prefs not written: %u", GetLastError());
+    else
+        g_prefsStamp = PrefsStamp();
 }
 
 // ============================================================================
@@ -2997,10 +3008,11 @@ void OnKilled(const std::wstring& name, int killed, int left, int blocked, uint6
 }
 
 winrt::Windows::System::DispatcherQueueTimer g_timer{nullptr};
+winrt::Windows::System::DispatcherQueueTimer g_prefsTimer{nullptr};
 int g_tick = 0;
 int g_refreshSeconds = 2;
 
-// An integer setting held to its range; make-schema.py reads the range from these calls.
+// An integer setting held to its range (settings.schema.json states the same range).
 int Clamped(PCWSTR name, int lo, int hi) {
     return std::clamp(Wh_GetIntSetting(name), lo, hi);
 }
@@ -3037,6 +3049,16 @@ void Tick() {
     }
 }
 
+// prefs.json changed under us: read it again and redraw. The picker keeps its place.
+void CheckPrefsChanged() {
+    if (g_unloading) return;
+    uint64_t stamp = PrefsStamp();
+    if (!stamp || stamp == g_prefsStamp) return;
+    LoadPrefs();
+    for (auto& w : g_widgets) PaintWidget(*w, true);
+    if (g_panel && g_panel->page != Page::kPick) ShowPage(g_panel->page);
+}
+
 void Start() {
     g_queue = winrt::Windows::System::DispatcherQueue::GetForCurrentThread();
     if (!g_queue) {
@@ -3053,12 +3075,20 @@ void Start() {
     g_timer.Interval(std::chrono::seconds(g_refreshSeconds));
     g_timer.Tick([](auto&&, auto&&) { Tick(); });
     g_timer.Start();
+    g_prefsTimer = g_queue.CreateTimer();
+    g_prefsTimer.Interval(std::chrono::seconds(1));
+    g_prefsTimer.Tick([](auto&&, auto&&) { CheckPrefsChanged(); });
+    g_prefsTimer.Start();
 }
 
 void Stop() {
     if (g_timer) {
         g_timer.Stop();
         g_timer = nullptr;
+    }
+    if (g_prefsTimer) {
+        g_prefsTimer.Stop();
+        g_prefsTimer = nullptr;
     }
     ClosePanel();
     DestroyFlyoutWindow();

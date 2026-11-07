@@ -48,13 +48,9 @@ fi
 for t in "${targets[@]}"; do
     if [[ "$t" == all || "$t" == helper ]]; then build_helper; fi
 done
-# The settings page: PillTaskbar's make-schema.py, run beside this folder's English
-# names (it reads names-en.tsv from its own folder).
+# The settings page Bloom draws: this folder's hand-written schema, listed in addon.json.
 if [[ -f "$out/addon.json" ]]; then
-    tool="$out/gen/schema-tool"
-    mkdir -p "$tool"
-    cp "$PILL_ROOT/tools/make-schema.py" "$here/tools/names-en.tsv" "$tool/"
-    python -I "$tool/make-schema.py" --schema "$out/settings.schema.json" "$here/mod/memory-clean.wh.cpp"
+    cp "$here/settings.schema.json" "$out/settings.schema.json"
     python -I "$here/tools/add-files.py" --settings "$out" settings.schema.json
 fi
 # addon.json lists only PillTaskbar's files; the helper joins them with its hash.
