@@ -2,11 +2,11 @@
 // @id              memory-clean
 // @name            Memory Clean
 // @description     Memory use next to the taskbar clock; frees memory and ends programs
-// @version         0.1.3
+// @version         0.1.4
 // @author          Hyeon
 // @include         explorer.exe
 // @architecture    x86-64
-// @compilerOptions -lcomctl32 -ldwmapi -lgdi32 -lntdll -lole32 -loleaut32 -lpsapi -lruntimeobject -lshell32 -lshlwapi -ltaskschd -luuid -lversion
+// @compilerOptions -lcomctl32 -ldwmapi -ldwrite -lgdi32 -lntdll -lole32 -loleaut32 -lpsapi -lruntimeobject -lshell32 -lshlwapi -ltaskschd -luuid -lversion
 // ==/WindhawkMod==
 
 // SPDX-License-Identifier: GPL-3.0-only
@@ -52,6 +52,7 @@ the working sets of your own programs are trimmed.
 #include <windows.h>
 
 #include <dwmapi.h>
+#include <dwrite.h>
 #include <psapi.h>
 #include <robuffer.h>
 #include <sddl.h>
@@ -66,6 +67,7 @@ the working sets of your own programs are trimmed.
 #include <chrono>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -1019,6 +1021,48 @@ winrt::Windows::UI::Text::FontWeight Weight(int weight) {
     return {uint16_t(weight)};
 }
 
+// The ink of bold Segoe UI text, from DirectWrite: x from the text's left edge, y from
+// its baseline (up is negative), and where the baseline sits under the line's top.
+struct InkBox {
+    double left, top, right, bottom, baseline;
+};
+std::optional<InkBox> MeasureInk(const std::wstring& s, double size) {
+    winrt::com_ptr<IDWriteFactory> factory;
+    winrt::com_ptr<IDWriteTextFormat> format;
+    winrt::com_ptr<IDWriteTextLayout> layout;
+    DWRITE_OVERHANG_METRICS o{};
+    DWRITE_LINE_METRICS line{};
+    UINT32 lines = 0;
+    if (FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+                                   reinterpret_cast<IUnknown**>(factory.put()))) ||
+        FAILED(factory->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_STYLE_NORMAL,
+                                         DWRITE_FONT_STRETCH_NORMAL, float(size), L"", format.put())) ||
+        FAILED(format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP)) ||
+        FAILED(factory->CreateTextLayout(s.c_str(), UINT32(s.size()), format.get(), 0, 0, layout.put())) ||
+        FAILED(layout->GetOverhangMetrics(&o)) || FAILED(layout->GetLineMetrics(&line, 1, &lines)) || !lines)
+        return std::nullopt;
+    return InkBox{-o.left, -o.top - line.baseline, o.right, o.bottom - line.baseline, line.baseline};
+}
+
+// Puts a TextBlock on its Canvas with the ink of its text, not its line box, centred on
+// (cx, cy): a line box keeps room above the digits, so centring it puts them low. XAML draws
+// text pushed down to whole pixels, so the top goes on a whole pixel and the baseline is
+// counted from it in whole pixels. units: pixels per canvas unit before the XAML root's scale.
+void PlaceInk(const wuxc::TextBlock& text, double cx, double cy, double units = 1) {
+    auto s = std::wstring(text.Text());
+    double size = text.FontSize();
+    text.Measure({std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()});
+    auto ink = MeasureInk(s, size);
+    if (!ink) ink = InkBox{0, -0.7 * size, text.DesiredSize().Width, 0, 1.08 * size};
+    double baseline = text.BaselineOffset() > 0 ? text.BaselineOffset() : ink->baseline;
+    auto root = text.XamlRoot();
+    double px = units * (root && root.RasterizationScale() > 0 ? root.RasterizationScale() : 1.0);
+    double drop = std::ceil(baseline * px - 0.01);  // whole pixels from the top to the drawn baseline
+    double goal = cy - (ink->top + ink->bottom) / 2;  // the baseline that centres the ink
+    wuxc::Canvas::SetLeft(text, cx - (ink->left + ink->right) / 2);
+    wuxc::Canvas::SetTop(text, std::round(goal * px - drop) / px);
+}
+
 // One drawing of the icon, used on the taskbar and in the settings.
 struct RamIcon {
     wuxc::Canvas canvas{nullptr};
@@ -1057,20 +1101,20 @@ struct RamIcon {
             feet.push_back(foot);
         }
         inner.Children().Append(body);
-        wuxc::Grid textBox;
-        textBox.Width(kBodyW);
-        textBox.Height(kBodyH);
-        wuxc::Canvas::SetLeft(textBox, kBodyX);
-        wuxc::Canvas::SetTop(textBox, kBodyY);
         text = wuxc::TextBlock();
         text.FontFamily(wuxm::FontFamily(kFont));
         text.FontWeight(winrt::Windows::UI::Text::FontWeights::Bold());
-        text.HorizontalAlignment(wux::HorizontalAlignment::Center);
-        text.VerticalAlignment(wux::VerticalAlignment::Center);
-        text.TextLineBounds(wux::TextLineBounds::Tight);
-        textBox.Children().Append(text);
-        inner.Children().Append(textBox);
+        inner.Children().Append(text);
         canvas.Children().Append(inner);
+        this->scale = scale;
+        // The pixel grid is known once the icon is on a taskbar.
+        canvas.Loaded([t = text, scale](auto&&, auto&&) { PlaceText(t, scale); });
+    }
+
+    double scale = 1;
+
+    static void PlaceText(const wuxc::TextBlock& t, double scale) {
+        PlaceInk(t, kBodyX + kBodyW / 2, kBodyY + kBodyH / 2, scale);
     }
 
     void Paint(int percent, IconStyle style, const Palette& c) {
@@ -1091,6 +1135,7 @@ struct RamIcon {
         text.Text(std::to_wstring(percent));
         text.FontSize(percent >= 100 ? 7.8 : 10);
         text.Foreground(Brush(style == IconStyle::kSolid ? c.win : color));
+        PlaceText(text, scale);
     }
 };
 
