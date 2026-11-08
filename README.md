@@ -2,14 +2,16 @@
 
 [한국어](README.ko.md)
 
-An add-on for the [Bloom](https://github.com/hyeon1035298/Bloom) launcher that puts a small RAM module next to the taskbar clock. It shows how much memory is in use. Clicking it opens a window with two tabs:
+An add-on for the [Bloom](https://github.com/hyeon1035298/Bloom) launcher that puts a small RAM module next to the taskbar clock. It shows how much memory is in use, or the CPU use, or both as two icons; a right click on the icon switches memory and CPU. Clicking it opens a window with two tabs:
 
 - **Clean**: free memory now, choose which areas to clean, and clean automatically when use passes a percent or every few minutes.
 - **Programs**: the running programs sorted by memory or CPU, with a button to end one. The list and the CPU readings are taken only while this tab is open.
 
-Programs on the exclusion list keep their memory when the add-on cleans; Bloom is on it from the start. The gear opens the cleaning settings: the icon style, the areas, automatic cleaning, exclusions and the helper.
+Programs on the exclusion list keep their memory when the add-on cleans; Bloom is on it from the start. The gear opens the settings: what the icon shows and its style, the island, the areas, automatic cleaning, exclusions and the helper.
 
 It works on the plain Windows 11 taskbar and on a taskbar restyled by [PillTaskbar](https://github.com/hyeon1035298/PillTaskbar_BloomAddon). The add-on runtime and host from PillTaskbar load it into Explorer; PillTaskbar itself does not have to be on.
+
+With PillTaskbar and an auto-hide taskbar, the icons can also sit on a small island of their own, left or right of PillTaskbar's island, while the taskbar is hidden. A click on it passes through or brings the taskbar out, as set.
 
 ## Requirements
 

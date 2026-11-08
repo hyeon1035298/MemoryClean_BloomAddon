@@ -1,12 +1,12 @@
 // ==WindhawkMod==
 // @id              memory-clean
 // @name            Memory Clean
-// @description     Memory use next to the taskbar clock; frees memory and ends programs
+// @description     Memory and CPU use next to the taskbar clock; frees memory and ends programs
 // @version         0.2.0
 // @author          Hyeon
 // @include         explorer.exe
 // @architecture    x86-64
-// @compilerOptions -lcomctl32 -ldwmapi -ldwrite -lgdi32 -lntdll -lole32 -loleaut32 -lpsapi -lruntimeobject -lshell32 -lshlwapi -ltaskschd -luuid -lversion
+// @compilerOptions -lcomctl32 -ld2d1 -ldwmapi -ldwrite -lgdi32 -lntdll -lole32 -loleaut32 -lpsapi -lruntimeobject -lshell32 -lshlwapi -ltaskschd -luuid -lversion
 // ==/WindhawkMod==
 
 // SPDX-License-Identifier: GPL-3.0-only
@@ -17,7 +17,9 @@
 /*
 # Memory Clean
 
-A RAM module next to the taskbar clock shows how much memory is in use. Clicking it
+A RAM module next to the taskbar clock shows how much memory is in use, or a chip the
+CPU use, or both; a right click switches the two. With PillTaskbar and an auto-hide
+taskbar they can also sit on a small island beside its island. Clicking the icon
 opens a window beside it: free memory now, see which programs use the most memory and
 CPU and end them, and set automatic cleaning and programs to leave alone.
 
@@ -51,6 +53,7 @@ the working sets of your own programs are trimmed.
 
 #include <windows.h>
 
+#include <d2d1.h>
 #include <dwmapi.h>
 #include <dwrite.h>
 #include <psapi.h>
@@ -215,9 +218,16 @@ std::optional<wdj::JsonObject> ParseObject(const std::optional<std::wstring>& te
 // ============================================================================
 
 enum class IconStyle { kLine, kFill, kSolid };
+// What the taskbar icon shows: memory, the processor, or both side by side.
+enum class Show { kMemory, kCpu, kBoth };
+// The add-on's own island beside PillTaskbar's while the taskbar is hidden.
+enum class IslandSide { kOff, kLeft, kRight };
 
 struct Prefs {
     IconStyle icon = IconStyle::kFill;
+    Show show = Show::kMemory;
+    IslandSide island = IslandSide::kOff;
+    bool islandReveals = false;  // a click on the island brings the taskbar out; else clicks pass
     unsigned areas = kDefaultAreas;
     bool autoPercentOn = false;
     int autoPercent = 90;
@@ -258,6 +268,9 @@ void LoadPrefs() {
     if (auto o = ParseObject(ReadText(DataDir() + L"\\" + kPrefsFile))) {
         auto& obj = *o;
         p.icon = IconStyle(std::clamp(int(obj.GetNamedNumber(L"icon", 1)), 0, 2));
+        p.show = Show(std::clamp(int(obj.GetNamedNumber(L"show", 0)), 0, 2));
+        p.island = IslandSide(std::clamp(int(obj.GetNamedNumber(L"island", 0)), 0, 2));
+        p.islandReveals = int(obj.GetNamedNumber(L"islandClick", 0)) == 1;
         p.areas = unsigned(obj.GetNamedNumber(L"areas", kDefaultAreas)) & kAllAreas;
         p.autoPercentOn = obj.GetNamedBoolean(L"autoPercentOn", false);
         p.autoPercent = std::clamp(int(obj.GetNamedNumber(L"autoPercent", 90)), 50, 99);
@@ -287,6 +300,9 @@ void SavePrefs() {
     auto& p = g_prefs;
     obj.SetNamedValue(L"v", wdj::JsonValue::CreateNumberValue(kPrefsVersion));
     obj.SetNamedValue(L"icon", wdj::JsonValue::CreateNumberValue(int(p.icon)));
+    obj.SetNamedValue(L"show", wdj::JsonValue::CreateNumberValue(int(p.show)));
+    obj.SetNamedValue(L"island", wdj::JsonValue::CreateNumberValue(int(p.island)));
+    obj.SetNamedValue(L"islandClick", wdj::JsonValue::CreateNumberValue(p.islandReveals ? 1 : 0));
     obj.SetNamedValue(L"areas", wdj::JsonValue::CreateNumberValue(p.areas));
     obj.SetNamedValue(L"autoPercentOn", wdj::JsonValue::CreateBooleanValue(p.autoPercentOn));
     obj.SetNamedValue(L"autoPercent", wdj::JsonValue::CreateNumberValue(p.autoPercent));
@@ -405,6 +421,22 @@ Mem ReadMem() {
         m.cache = uint64_t(perf.SystemCache) * perf.PageSize;
     }
     return m;
+}
+
+// The processor's use since the last call, in percent of all its cores: GetSystemTimes'
+// kernel time counts the idle time too. The first call has nothing to compare and gives 0.
+double ReadCpu() {
+    static uint64_t lastIdle = 0, lastBusy = 0;
+    FILETIME idle, kernel, user;
+    if (!GetSystemTimes(&idle, &kernel, &user)) return 0;
+    auto value = [](const FILETIME& f) { return (uint64_t(f.dwHighDateTime) << 32) | f.dwLowDateTime; };
+    uint64_t i = value(idle), busy = value(kernel) + value(user);
+    uint64_t di = i - lastIdle, db = busy - lastBusy;
+    bool first = !lastBusy;
+    lastIdle = i;
+    lastBusy = busy;
+    if (first || !db || di > db) return 0;
+    return 100.0 * double(db - di) / double(db);
 }
 
 std::wstring Bytes(uint64_t bytes) {
@@ -1020,10 +1052,61 @@ void StartKill(const std::wstring& name, std::vector<KillTarget> targets) {
 
 // 25:18, the same width as the brightness add-on's monitor next to it.
 constexpr double kW = 25, kH = 18;
-constexpr double kBodyX = 1.15, kBodyY = 0.95, kBodyW = kW - 2.3, kBodyH = 13.3, kRadius = 3.6, kStroke = 1.3;
-constexpr double kFeetH = 2.9, kFootW = 1.7;
-constexpr double kFeet[] = {kW / 2 - 7, kW / 2 - 4.4, kW / 2 - 1.8,  // the middle one left out: the key notch
-                            kW / 2 + 1.8, kW / 2 + 4.4, kW / 2 + 7};
+constexpr double kStroke = 1.3, kPinW = 1.7;
+
+enum class Meter { kMemory, kCpu };
+
+struct Box4 {
+    double x, y, w, h;
+};
+// An icon in its 25 x 18 box: a round-cornered body with the number in it, and its pins.
+struct Outline {
+    Box4 body;
+    double radius;
+    std::vector<Box4> pins;
+};
+
+// A RAM module stands on six feet, the middle one left out for the key notch. A processor
+// is a smaller body with pins on all four sides.
+const Outline& OutlineOf(Meter m) {
+    static const Outline ram = [] {
+        Outline o{{1.15, 0.95, kW - 2.3, 13.3}, 3.6, {}};
+        double top = o.body.y + o.body.h - kStroke / 2;
+        for (double x : {-7.0, -4.4, -1.8, 1.8, 4.4, 7.0})
+            o.pins.push_back({kW / 2 + x - kPinW / 2, top, kPinW, 2.9 + kStroke / 2});
+        return o;
+    }();
+    static const Outline cpu = [] {
+        Outline o{{3.1, 2.6, kW - 6.2, kH - 5.2}, 2.8, {}};
+        double reach = 2.3;  // how far the pins stand out of the body
+        double bottom = o.body.y + o.body.h - kStroke / 2, right = o.body.x + o.body.w - kStroke / 2;
+        for (double x : {-5.2, 0.0, 5.2}) {
+            o.pins.push_back({kW / 2 + x - kPinW / 2, o.body.y - reach, kPinW, reach + kStroke / 2});
+            o.pins.push_back({kW / 2 + x - kPinW / 2, bottom, kPinW, reach + kStroke / 2});
+        }
+        for (double y : {-2.6, 2.6}) {
+            o.pins.push_back({o.body.x - reach, kH / 2 + y - kPinW / 2, reach + kStroke / 2, kPinW});
+            o.pins.push_back({right, kH / 2 + y - kPinW / 2, reach + kStroke / 2, kPinW});
+        }
+        return o;
+    }();
+    return m == Meter::kCpu ? cpu : ram;
+}
+
+std::vector<Meter> MetersOf(Show show) {
+    if (show == Show::kBoth) return {Meter::kMemory, Meter::kCpu};
+    return {show == Show::kCpu ? Meter::kCpu : Meter::kMemory};
+}
+
+// The icon's colour at a percent: the taskbar's ink, amber from 80, red from 90.
+uint32_t MeterColor(const Palette& c, int percent) {
+    return percent >= kDangerPercent ? c.ramDanger : percent >= kWarnPercent ? c.ramWarn : c.ramInk;
+}
+
+// The number's size in box units: three digits get smaller.
+double NumberSize(int percent) {
+    return percent >= 100 ? 7.8 : 10;
+}
 constexpr PCWSTR kFont = L"Segoe UI, Malgun Gothic";  // Bloom's own pair
 // Other Bloom add-ons in the tray find this one by name (the brightness add-on sits left of it).
 constexpr PCWSTR kWidgetName = L"BloomAddon.memory-clean";
@@ -1074,42 +1157,47 @@ void PlaceInk(const wuxc::TextBlock& text, double cx, double cy, double units = 
     wuxc::Canvas::SetTop(text, std::round(goal * px - drop) / px);
 }
 
-// One drawing of the icon, used on the taskbar and in the settings.
-struct RamIcon {
+// One drawing of an icon, used on the taskbar and in the settings.
+struct MeterIcon {
+    Meter meter = Meter::kMemory;
     wuxc::Canvas canvas{nullptr};
     wuxs::Rectangle body{nullptr}, fill{nullptr};
-    std::vector<wuxs::Rectangle> feet;
+    std::vector<wuxs::Rectangle> pins;
     wuxc::TextBlock text{nullptr};
+    double scale = 1;
 
-    void Build(double scale) {
+    void Build(Meter m, double s) {
+        meter = m;
+        scale = s;
+        const Outline& o = OutlineOf(m);
         canvas = wuxc::Canvas();
-        canvas.Width(kW * scale);
-        canvas.Height(kH * scale);
+        canvas.Width(kW * s);
+        canvas.Height(kH * s);
         wuxm::ScaleTransform st;
-        st.ScaleX(scale);
-        st.ScaleY(scale);
+        st.ScaleX(s);
+        st.ScaleY(s);
         wuxc::Canvas inner;
         inner.RenderTransform(st);
         fill = wuxs::Rectangle();
         body = wuxs::Rectangle();
         for (auto* r : {&fill, &body}) {
-            r->Width(kBodyW);
-            r->Height(kBodyH);
-            r->RadiusX(kRadius);
-            r->RadiusY(kRadius);
-            wuxc::Canvas::SetLeft(*r, kBodyX);
-            wuxc::Canvas::SetTop(*r, kBodyY);
+            r->Width(o.body.w);
+            r->Height(o.body.h);
+            r->RadiusX(o.radius);
+            r->RadiusY(o.radius);
+            wuxc::Canvas::SetLeft(*r, o.body.x);
+            wuxc::Canvas::SetTop(*r, o.body.y);
         }
         body.StrokeThickness(kStroke);
         inner.Children().Append(fill);
-        for (double x : kFeet) {
-            wuxs::Rectangle foot;
-            foot.Width(kFootW);
-            foot.Height(kFeetH + kStroke / 2);
-            wuxc::Canvas::SetLeft(foot, x - kFootW / 2);
-            wuxc::Canvas::SetTop(foot, kBodyY + kBodyH - kStroke / 2);
-            inner.Children().Append(foot);
-            feet.push_back(foot);
+        for (auto& p : o.pins) {
+            wuxs::Rectangle pin;
+            pin.Width(p.w);
+            pin.Height(p.h);
+            wuxc::Canvas::SetLeft(pin, p.x);
+            wuxc::Canvas::SetTop(pin, p.y);
+            inner.Children().Append(pin);
+            pins.push_back(pin);
         }
         inner.Children().Append(body);
         text = wuxc::TextBlock();
@@ -1117,22 +1205,21 @@ struct RamIcon {
         text.FontWeight(winrt::Windows::UI::Text::FontWeights::Bold());
         inner.Children().Append(text);
         canvas.Children().Append(inner);
-        this->scale = scale;
         // The pixel grid is known once the icon is on a taskbar.
-        canvas.Loaded([t = text, scale](auto&&, auto&&) { PlaceText(t, scale); });
+        canvas.Loaded([t = text, m, s](auto&&, auto&&) { PlaceText(t, m, s); });
     }
 
-    double scale = 1;
-
-    static void PlaceText(const wuxc::TextBlock& t, double scale) {
-        PlaceInk(t, kBodyX + kBodyW / 2, kBodyY + kBodyH / 2, scale);
+    static void PlaceText(const wuxc::TextBlock& t, Meter m, double s) {
+        auto& b = OutlineOf(m).body;
+        PlaceInk(t, b.x + b.w / 2, b.y + b.h / 2, s);
     }
 
     void Paint(int percent, IconStyle style, const Palette& c) {
-        uint32_t color = percent >= kDangerPercent ? c.ramDanger : percent >= kWarnPercent ? c.ramWarn : c.ramInk;
+        auto& b = OutlineOf(meter).body;
+        uint32_t color = MeterColor(c, percent);
         auto brush = Brush(color);
         body.Stroke(brush);
-        for (auto& f : feet) f.Fill(brush);
+        for (auto& p : pins) p.Fill(brush);
         if (style == IconStyle::kLine) {
             fill.Visibility(wux::Visibility::Collapsed);
         } else {
@@ -1140,42 +1227,79 @@ struct RamIcon {
             bool solid = style == IconStyle::kSolid;
             fill.Fill(Brush(solid ? color : WithAlpha(color, 0x47)));
             wuxm::RectangleGeometry clip;
-            clip.Rect({0, 0, float(solid ? kBodyW : kBodyW * std::clamp(percent, 0, 100) / 100.0), float(kBodyH)});
+            clip.Rect({0, 0, float(solid ? b.w : b.w * std::clamp(percent, 0, 100) / 100.0), float(b.h)});
             fill.Clip(clip);
         }
         text.Text(std::to_wstring(percent));
-        text.FontSize(percent >= 100 ? 7.8 : 10);
+        text.FontSize(NumberSize(percent));
         text.Foreground(Brush(style == IconStyle::kSolid ? c.win : color));
-        PlaceText(text, scale);
+        PlaceText(text, meter, scale);
     }
 };
 
 struct Widget {
     HWND taskbar = nullptr;
     wuxc::Grid root{nullptr};
-    RamIcon icon;
-    int shown = -1;
+    wuxc::StackPanel row{nullptr};
+    std::vector<MeterIcon> icons;
+    Show show{};
+    std::vector<int> shown;  // the numbers drawn, one per icon
     IconStyle style{};
     const Palette* palette = nullptr;
     bool hover = false;
 };
 std::vector<std::unique_ptr<Widget>> g_widgets;  // taskbar thread
 Mem g_mem;
-int g_percent = 0;
+int g_percent = 0;  // memory in use
+int g_cpu = 0;      // the processor's use over the last refresh
 void TogglePanel(Widget& w);
+void OnShowChanged();
+
+int PercentOf(Meter m) {
+    return m == Meter::kCpu ? g_cpu : g_percent;
+}
+
+std::wstring TipOf(Meter m) {
+    if (m == Meter::kCpu) return Format(T(L"CPU %d %%", L"CPU %d%%"), g_cpu);
+    return Format(T(L"메모리 %d %% · %s / %s GB", L"Memory %d%% · %s / %s GB"), g_percent, Gb(g_mem.used).c_str(),
+                  Gb(g_mem.total).c_str());
+}
 
 void PaintWidget(Widget& w, bool force = false) {
     const Palette& c = PaletteFor(w.root);
-    if (!force && w.shown == g_percent && w.style == g_prefs.icon && w.palette == &c) return;
-    w.shown = g_percent;
+    if (w.icons.empty() || w.show != g_prefs.show) {
+        w.row.Children().Clear();
+        w.icons.clear();
+        for (Meter m : MetersOf(g_prefs.show)) {
+            w.icons.emplace_back().Build(m, 1.0);
+            w.row.Children().Append(w.icons.back().canvas);
+        }
+        w.show = g_prefs.show;
+        force = true;
+    }
+    std::vector<int> numbers;
+    for (auto& icon : w.icons) numbers.push_back(PercentOf(icon.meter));
+    if (!force && w.shown == numbers && w.style == g_prefs.icon && w.palette == &c) return;
+    w.shown = numbers;
     w.style = g_prefs.icon;
     w.palette = &c;
-    w.icon.Paint(g_percent, g_prefs.icon, c);
+    std::wstring tip;
+    for (auto& icon : w.icons) {
+        icon.Paint(PercentOf(icon.meter), g_prefs.icon, c);
+        tip += (tip.empty() ? L"" : L"\n") + TipOf(icon.meter);
+    }
     w.root.Background(Brush(w.hover ? 0x2E7F7F7F : 0));
-    std::wstring tip = Format(T(L"메모리 %d %% · %s / %s GB", L"Memory %d%% · %s / %s GB"), g_percent,
-                              Gb(g_mem.used).c_str(), Gb(g_mem.total).c_str());
     wuxc::ToolTipService::SetToolTip(w.root, box_value(tip));
     wux::Automation::AutomationProperties::SetName(w.root, tip);
+}
+
+// A right click switches memory and the processor, as the setting does; with both shown
+// it does nothing. Either way the taskbar's own menu stays shut.
+void SwitchMeter() {
+    if (g_prefs.show == Show::kBoth) return;
+    g_prefs.show = g_prefs.show == Show::kMemory ? Show::kCpu : Show::kMemory;
+    SavePrefs();
+    OnShowChanged();
 }
 
 std::unique_ptr<Widget> BuildWidget(HWND taskbar) {
@@ -1188,8 +1312,10 @@ std::unique_ptr<Widget> BuildWidget(HWND taskbar) {
     w->root.CornerRadius({6, 6, 6, 6});
     w->root.VerticalAlignment(wux::VerticalAlignment::Center);
     w->root.Background(Brush(0));
-    w->icon.Build(1.0);
-    w->root.Children().Append(w->icon.canvas);
+    w->row = wuxc::StackPanel();
+    w->row.Orientation(wuxc::Orientation::Horizontal);
+    w->row.Spacing(4);
+    w->root.Children().Append(w->row);
     Widget* raw = w.get();
     w->root.PointerEntered([raw](auto&&, auto&&) {
         raw->hover = true;
@@ -1203,6 +1329,11 @@ std::unique_ptr<Widget> BuildWidget(HWND taskbar) {
         args.Handled(true);
         TogglePanel(*raw);
     });
+    w->root.RightTapped([](auto&&, wux::Input::RightTappedRoutedEventArgs const& args) {
+        args.Handled(true);
+        SwitchMeter();
+    });
+    w->root.ContextRequested([](auto&&, wux::Input::ContextRequestedEventArgs const& args) { args.Handled(true); });
     return w;
 }
 
@@ -1242,6 +1373,367 @@ void PlaceWidgets() {
         Wh_Log(L"widget placed on %p", hwnd);
     }
 }
+// ============================================================================
+// The island: the icons on a small island of their own beside PillTaskbar's, while an
+// auto-hide taskbar is hidden and that island shows (PillTaskbar's docs/addon-protocol.md)
+// ============================================================================
+
+// On each taskbar window while its island shows with the taskbar in: the island's screen
+// x range, the screen edge's y, its height, whether it is at the bottom and white.
+constexpr wchar_t kIslandProp[] = L"PillTaskbar.Island";
+
+UINT IslandChangedMsg() {
+    static UINT msg = RegisterWindowMessageW(L"PillTaskbar.IslandChanged");
+    return msg;
+}
+
+// Posted to a taskbar window: as if its island were clicked.
+UINT IslandRevealMsg() {
+    static UINT msg = RegisterWindowMessageW(L"PillTaskbar.IslandReveal");
+    return msg;
+}
+
+struct Center {
+    int left = 0, right = 0, edge = 0, height = 0;
+    bool bottom = false, white = false;
+};
+
+std::optional<Center> CenterOf(HWND taskbar) {
+    auto v = uint64_t(ULONG_PTR(GetPropW(taskbar, kIslandProp)));
+    Center c;
+    c.left = int16_t(v & 0xFFFF);
+    c.right = int16_t((v >> 16) & 0xFFFF);
+    c.edge = int16_t((v >> 32) & 0xFFFF);
+    c.height = int((v >> 48) & 0xFFF);
+    c.bottom = (v >> 60) & 1;
+    c.white = (v >> 61) & 1;
+    if (!v || c.height <= 0 || c.right <= c.left) return std::nullopt;
+    return c;
+}
+
+// As PillTaskbar draws its island: black, or white with the light theme's colours.
+constexpr uint32_t kIslandBlack = 0xFF000000, kIslandWhite = 0xFFFFFFFF;
+constexpr double kIslandPadding = 0.4;  // the body's sides, times the height
+constexpr double kIslandFlare = 8;      // the fillets into the screen edge
+constexpr double kIslandIcon = 0.6;     // the icons' height, times the island's
+constexpr double kIslandGap = 4;        // between the two islands
+constexpr int kFadeInMs = 200, kFadeOutMs = 100, kFadeStepMs = 15;
+constexpr UINT_PTR kFadeTimer = 1;
+constexpr PCWSTR kIslandClass = L"BloomAddon.memory-clean.Island";
+
+struct SideIsland {
+    HWND taskbar = nullptr;
+    HWND hwnd = nullptr;
+    HDC dc = nullptr;  // holds the drawn island
+    HBITMAP bitmap = nullptr, oldBitmap = nullptr;
+    SIZE size{};
+    POINT at{};
+    std::wstring drawn;  // what the bitmap shows
+    int alpha = 0, goal = 0;
+    ULONGLONG fadeFrom = 0;  // GetTickCount64 as the fade began
+    int fadeStart = 0;
+    bool reveals = false;
+};
+std::vector<std::unique_ptr<SideIsland>> g_islands;  // taskbar thread
+std::vector<HWND> g_listening;                         // taskbars subclassed for IslandChangedMsg
+winrt::com_ptr<ID2D1Factory> g_d2d;
+winrt::com_ptr<IDWriteFactory> g_dwrite;
+void SyncIslands();
+
+D2D1_COLOR_F ColorF(uint32_t argb) {
+    return {BYTE(argb >> 16) / 255.f, BYTE(argb >> 8) / 255.f, BYTE(argb) / 255.f, BYTE(argb >> 24) / 255.f};
+}
+
+// The island's outline in its window: the body hangs from the screen edge with round
+// corners away from it, and fillets curve its sides out into the edge.
+winrt::com_ptr<ID2D1PathGeometry> IslandShape(float w, float h, float flare, bool bottom) {
+    winrt::com_ptr<ID2D1PathGeometry> path;
+    winrt::com_ptr<ID2D1GeometrySink> sink;
+    if (FAILED(g_d2d->CreatePathGeometry(path.put())) || FAILED(path->Open(sink.put()))) return nullptr;
+    float r = h / 2, f = flare;
+    auto at = [&](float x, float y) { return D2D1::Point2F(x, bottom ? h - y : y); };
+    auto arc = [&](float x, float y, float radius, bool clockwise) {
+        // Turned over at the bottom, a turn runs the other way.
+        sink->AddArc(D2D1::ArcSegment(at(x, y), D2D1::SizeF(radius, radius), 0,
+                                      clockwise != bottom ? D2D1_SWEEP_DIRECTION_CLOCKWISE
+                                                          : D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,
+                                      D2D1_ARC_SIZE_SMALL));
+    };
+    sink->BeginFigure(at(0, 0), D2D1_FIGURE_BEGIN_FILLED);
+    sink->AddLine(at(w, 0));
+    arc(w - f, f, f, false);
+    sink->AddLine(at(w - f, h - r));
+    arc(w - f - r, h, r, true);
+    sink->AddLine(at(f + r, h));
+    arc(f, h - r, r, true);
+    sink->AddLine(at(f, f));
+    arc(0, 0, f, false);
+    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+    if (FAILED(sink->Close())) return nullptr;
+    return path;
+}
+
+// One icon as the taskbar draws it, its box's top left at (x, y), `u` pixels a unit.
+void DrawMeter(ID2D1RenderTarget* rt, Meter m, int percent, IconStyle style, const Palette& c, float x, float y, float u) {
+    const Outline& o = OutlineOf(m);
+    uint32_t color = MeterColor(c, percent);
+    winrt::com_ptr<ID2D1SolidColorBrush> ink, fill, number;
+    rt->CreateSolidColorBrush(ColorF(color), ink.put());
+    rt->CreateSolidColorBrush(ColorF(style == IconStyle::kSolid ? color : WithAlpha(color, 0x47)), fill.put());
+    rt->CreateSolidColorBrush(ColorF(style == IconStyle::kSolid ? c.win : color), number.put());
+    if (!ink || !fill || !number) return;
+    auto box = [&](const Box4& b, float inset = 0) {
+        return D2D1::RectF(x + float(b.x) * u + inset, y + float(b.y) * u + inset, x + float(b.x + b.w) * u - inset,
+                           y + float(b.y + b.h) * u - inset);
+    };
+    D2D1_RECT_F body = box(o.body);
+    float radius = float(o.radius) * u;
+    if (style != IconStyle::kLine) {
+        D2D1_RECT_F clip = body;
+        if (style == IconStyle::kFill) clip.right = body.left + (body.right - body.left) * std::clamp(percent, 0, 100) / 100.f;
+        rt->PushAxisAlignedClip(clip, D2D1_ANTIALIAS_MODE_ALIASED);
+        rt->FillRoundedRectangle(D2D1::RoundedRect(body, radius, radius), fill.get());
+        rt->PopAxisAlignedClip();
+    }
+    for (auto& p : o.pins) rt->FillRectangle(box(p), ink.get());
+    // XAML strokes a Rectangle inside its bounds.
+    float stroke = float(kStroke) * u;
+    float inner = std::max(0.f, radius - stroke / 2);
+    rt->DrawRoundedRectangle(D2D1::RoundedRect(box(o.body, stroke / 2), inner, inner), ink.get(), stroke);
+
+    std::wstring s = std::to_wstring(percent);
+    winrt::com_ptr<IDWriteTextFormat> format;
+    winrt::com_ptr<IDWriteTextLayout> layout;
+    DWRITE_OVERHANG_METRICS over{};
+    DWRITE_LINE_METRICS line{};
+    UINT32 lines = 0;
+    float size = float(NumberSize(percent)) * u;
+    if (FAILED(g_dwrite->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_STYLE_NORMAL,
+                                          DWRITE_FONT_STRETCH_NORMAL, size, L"", format.put())) ||
+        FAILED(format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP)) ||
+        FAILED(g_dwrite->CreateTextLayout(s.c_str(), UINT32(s.size()), format.get(), 0, 0, layout.put())) ||
+        FAILED(layout->GetOverhangMetrics(&over)) || FAILED(layout->GetLineMetrics(&line, 1, &lines)) || !lines)
+        return;
+    // The ink, not the line box, centred on the body (as PlaceInk does).
+    float inkLeft = -over.left, inkRight = over.right, inkTop = -over.top, inkBottom = over.bottom;
+    float cx = (body.left + body.right) / 2, cy = (body.top + body.bottom) / 2;
+    rt->DrawTextLayout(D2D1::Point2F(std::round(cx - (inkLeft + inkRight) / 2), std::round(cy - (inkTop + inkBottom) / 2)),
+                       layout.get(), number.get(), D2D1_DRAW_TEXT_OPTIONS_NONE);
+}
+
+void ReleaseBitmap(SideIsland& s) {
+    if (s.dc && s.oldBitmap) SelectObject(s.dc, s.oldBitmap);
+    if (s.bitmap) DeleteObject(s.bitmap);
+    if (s.dc) DeleteDC(s.dc);
+    s.dc = nullptr;
+    s.bitmap = s.oldBitmap = nullptr;
+    s.size = {};
+}
+
+// Puts the drawn island on screen at its alpha.
+void Present(SideIsland& s) {
+    if (!s.dc || !s.hwnd) return;
+    POINT origin{};
+    BLENDFUNCTION blend{AC_SRC_OVER, 0, BYTE(std::clamp(s.alpha, 0, 255)), AC_SRC_ALPHA};
+    UpdateLayeredWindow(s.hwnd, nullptr, &s.at, &s.size, s.dc, &origin, 0, &blend, ULW_ALPHA);
+}
+
+// Draws the island for `c` into its bitmap; false if it can't.
+bool Draw(SideIsland& s, const Center& c, UINT dpi) {
+    if (!g_d2d && FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, g_d2d.put()))) return false;
+    if (!g_dwrite && FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+                                                reinterpret_cast<IUnknown**>(g_dwrite.put()))))
+        return false;
+    float scale = dpi / 96.f;
+    float h = float(c.height);
+    float u = std::round(h * float(kIslandIcon)) / float(kH);
+    auto meters = MetersOf(g_prefs.show);
+    float iconGap = std::round(4 * u);
+    float content = float(meters.size()) * float(kW) * u + float(meters.size() - 1) * iconGap;
+    float pad = std::round(h * float(kIslandPadding));
+    float flare = std::min(std::round(float(kIslandFlare) * scale), h / 2);
+    float body = std::max(std::ceil(content + 2 * pad), h);
+    SIZE size{LONG(body + 2 * flare), LONG(h)};
+    if (size.cx != s.size.cx || size.cy != s.size.cy) {
+        ReleaseBitmap(s);
+        BITMAPINFO bi{};
+        bi.bmiHeader = {sizeof(bi.bmiHeader), size.cx, -size.cy, 1, 32, BI_RGB};
+        void* bits = nullptr;
+        HDC screen = GetDC(nullptr);
+        s.dc = CreateCompatibleDC(screen);
+        ReleaseDC(nullptr, screen);
+        s.bitmap = s.dc ? CreateDIBSection(s.dc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0) : nullptr;
+        if (!s.bitmap) {
+            ReleaseBitmap(s);
+            return false;
+        }
+        s.oldBitmap = HBITMAP(SelectObject(s.dc, s.bitmap));
+        s.size = size;
+    }
+    auto props = D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT,
+                                              D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
+                                              96, 96);  // pixels, not the system DPI
+    winrt::com_ptr<ID2D1DCRenderTarget> rt;
+    RECT all{0, 0, size.cx, size.cy};
+    if (FAILED(g_d2d->CreateDCRenderTarget(&props, rt.put())) || FAILED(rt->BindDC(s.dc, &all))) return false;
+    const Palette& pal = c.white ? kLight : kDark;
+    rt->BeginDraw();
+    rt->Clear(D2D1::ColorF(0, 0));
+    rt->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+    winrt::com_ptr<ID2D1SolidColorBrush> ground;
+    auto shape = IslandShape(float(size.cx), h, flare, c.bottom);
+    if (shape && SUCCEEDED(rt->CreateSolidColorBrush(ColorF(c.white ? kIslandWhite : kIslandBlack), ground.put())))
+        rt->FillGeometry(shape.get(), ground.get());
+    float x = std::round((float(size.cx) - content) / 2), y = std::round((h - float(kH) * u) / 2);
+    for (Meter m : meters) {
+        DrawMeter(rt.get(), m, PercentOf(m), g_prefs.icon, pal, x, y, u);
+        x += float(kW) * u + iconGap;
+    }
+    return SUCCEEDED(rt->EndDraw());
+}
+
+LRESULT CALLBACK IslandWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    auto it = std::ranges::find_if(g_islands, [&](auto& s) { return s->hwnd == hwnd; });
+    SideIsland* s = it != g_islands.end() ? it->get() : nullptr;
+    switch (msg) {
+        case WM_MOUSEACTIVATE:
+            return MA_NOACTIVATE;
+        case WM_NCHITTEST:
+            if (s && !s->reveals) return HTTRANSPARENT;
+            break;
+        case WM_LBUTTONUP:
+            if (s && s->reveals && s->goal) PostMessageW(s->taskbar, IslandRevealMsg(), 0, 0);
+            return 0;
+        case WM_TIMER:
+            if (wParam != kFadeTimer || !s) break;
+            {
+                int length = s->goal ? kFadeInMs : kFadeOutMs;
+                double t = std::min(1.0, double(GetTickCount64() - s->fadeFrom) / length);
+                s->alpha = int(std::lround(s->fadeStart + (s->goal - s->fadeStart) * t));
+                Present(*s);
+                if (t >= 1) {
+                    KillTimer(hwnd, kFadeTimer);
+                    if (!s->goal) ShowWindow(hwnd, SW_HIDE);
+                }
+            }
+            return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+HINSTANCE ThisModule();
+
+void FadeTo(SideIsland& s, int goal) {
+    if (s.goal == goal) return;  // on its way there, or there
+    s.goal = goal;
+    s.fadeStart = s.alpha;
+    s.fadeFrom = GetTickCount64();
+    if (goal) {
+        Present(s);
+        SetWindowPos(s.hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
+    SetTimer(s.hwnd, kFadeTimer, kFadeStepMs, nullptr);
+}
+
+void DestroyIsland(SideIsland& s) {
+    if (s.hwnd) DestroyWindow(s.hwnd);
+    s.hwnd = nullptr;
+    ReleaseBitmap(s);
+}
+
+LRESULT CALLBACK IslandSubclass(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, DWORD_PTR) {
+    if (msg == IslandChangedMsg() && !g_unloading) {
+        try {
+            SyncIslands();
+        } catch (...) {
+            Wh_Log(L"island sync failed: %08X", winrt::to_hresult());
+        }
+    }
+    return DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
+void StopListening() {
+    for (HWND h : g_listening) WindhawkUtils::RemoveWindowSubclassFromAnyThread(h, IslandSubclass);
+    g_listening.clear();
+}
+
+void StopIslands() {
+    StopListening();
+    for (auto& s : g_islands) DestroyIsland(*s);
+    g_islands.clear();
+    UnregisterClassW(kIslandClass, ThisModule());
+    g_d2d = nullptr;
+    g_dwrite = nullptr;
+}
+
+// Every taskbar whose PillTaskbar island shows gets ours beside it, fading in; the
+// others fade theirs out. Taskbar thread.
+void SyncIslands() {
+    if (g_unloading || g_prefs.island == IslandSide::kOff) {
+        if (!g_islands.empty() || !g_listening.empty()) StopIslands();
+        return;
+    }
+    auto taskbars = Taskbars();
+    std::erase_if(g_listening, [&](HWND h) { return std::ranges::find(taskbars, h) == taskbars.end(); });
+    std::erase_if(g_islands, [&](auto& s) {
+        bool gone = std::ranges::find(taskbars, s->taskbar) == taskbars.end();
+        if (gone) DestroyIsland(*s);
+        return gone;
+    });
+    static bool registered = false;
+    if (!registered || !GetClassInfoExW(ThisModule(), kIslandClass, nullptr)) {
+        WNDCLASSEXW wc{sizeof(wc)};
+        wc.lpfnWndProc = IslandWndProc;
+        wc.hInstance = ThisModule();
+        wc.lpszClassName = kIslandClass;
+        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        registered = RegisterClassExW(&wc) || GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+    }
+    for (HWND taskbar : taskbars) {
+        if (std::ranges::find(g_listening, taskbar) == g_listening.end() &&
+            WindhawkUtils::SetWindowSubclassFromAnyThread(taskbar, IslandSubclass, 0))
+            g_listening.push_back(taskbar);
+        auto it = std::ranges::find_if(g_islands, [&](auto& s) { return s->taskbar == taskbar; });
+        auto center = CenterOf(taskbar);
+        if (!center) {
+            if (it != g_islands.end() && (*it)->hwnd) FadeTo(**it, 0);
+            continue;
+        }
+        if (it == g_islands.end()) {
+            g_islands.push_back(std::make_unique<SideIsland>());
+            it = g_islands.end() - 1;
+            (*it)->taskbar = taskbar;
+        }
+        auto& s = **it;
+        bool reveals = g_prefs.islandReveals;
+        if (!s.hwnd) {
+            s.hwnd = CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST |
+                                         (reveals ? 0 : WS_EX_TRANSPARENT),
+                                     kIslandClass, L"", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, ThisModule(), nullptr);
+            if (!s.hwnd) continue;
+            s.reveals = reveals;
+        }
+        if (s.reveals != reveals) {
+            LONG_PTR ex = GetWindowLongPtrW(s.hwnd, GWL_EXSTYLE);
+            SetWindowLongPtrW(s.hwnd, GWL_EXSTYLE, reveals ? ex & ~WS_EX_TRANSPARENT : ex | WS_EX_TRANSPARENT);
+            s.reveals = reveals;
+        }
+        UINT dpi = GetDpiForWindow(taskbar);
+        std::wstring key;
+        for (Meter m : MetersOf(g_prefs.show)) key += std::to_wstring(PercentOf(m)) + L",";
+        key += Format(L"%d|%d|%d|%d|%u", int(g_prefs.icon), center->height, center->white, center->bottom, dpi);
+        if (key != s.drawn) {
+            if (!Draw(s, *center, dpi ? dpi : 96)) continue;
+            s.drawn = key;
+        }
+        int gap = int(std::lround(kIslandGap * (dpi ? dpi : 96) / 96.0));
+        s.at.x = g_prefs.island == IslandSide::kLeft ? center->left - gap - s.size.cx : center->right + gap;
+        s.at.y = center->bottom ? center->edge - s.size.cy : center->edge;
+        if (s.alpha || s.goal) Present(s);
+        FadeTo(s, 255);
+    }
+}
+
 
 // ============================================================================
 // Parts: Bloom-style buttons, segments, keys, switch, number box, panels
@@ -2503,7 +2995,16 @@ wux::UIElement BuildSettings() {
     const Palette& c = *p.c;
     auto page = VStack(0);
 
-    page.Children().Append(SectionHead(T(L"작업표시줄 아이콘", L"Taskbar icon")));
+    page.Children().Append(SectionHead(T(L"작업표시줄 아이콘", L"Taskbar icon"), T(L"우클릭으로 전환", L"Right-click switches")));
+    auto shows = MakeSegment({T(L"메모리", L"Memory"), L"CPU", T(L"메모리+CPU", L"Memory+CPU")}, true, 28,
+                             int(g_prefs.show), [](int i) {
+                                 g_prefs.show = Show(i);
+                                 SavePrefs();
+                                 OnShowChanged();
+                             });
+    shows.root.Margin({0, 0, 0, 6});
+    page.Children().Append(shows.root);
+    Meter sample = g_prefs.show == Show::kCpu ? Meter::kCpu : Meter::kMemory;
     auto styles = Columns({-1, -1, -1}, 6);
     for (int i = 0; i < 3; i++) {
         bool on = int(g_prefs.icon) == i;
@@ -2511,8 +3012,8 @@ wux::UIElement BuildSettings() {
         chip.Height(40);
         chip.BorderThickness({on ? 1.5 : 1.0, on ? 1.5 : 1.0, on ? 1.5 : 1.0, on ? 1.5 : 1.0});
         chip.BorderBrush(Brush(Ink(c, on ? 25 : 15)));
-        RamIcon icon;
-        icon.Build(16.0 / kH);
+        MeterIcon icon;
+        icon.Build(sample, 16.0 / kH);
         icon.Paint(46, IconStyle(i), c);
         icon.canvas.HorizontalAlignment(wux::HorizontalAlignment::Center);
         icon.canvas.VerticalAlignment(wux::VerticalAlignment::Center);
@@ -2522,12 +3023,32 @@ wux::UIElement BuildSettings() {
         OnClick(chip, [i] {
             g_prefs.icon = IconStyle(i);
             SavePrefs();
-            for (auto& w : g_widgets) PaintWidget(*w, true);
-            ShowPage(Page::kSettings);
+            OnShowChanged();
         });
         styles.Children().Append(InColumn(chip, i));
     }
     page.Children().Append(styles);
+
+    page.Children().Append(SectionHead(T(L"아일랜드", L"Island")));
+    auto side = MakeSegment({T(L"끔", L"Off"), T(L"왼쪽에 붙임", L"On the left"), T(L"오른쪽에 붙임", L"On the right")},
+                            true, 28, int(g_prefs.island), [](int i) {
+                                g_prefs.island = IslandSide(i);
+                                SavePrefs();
+                                OnShowChanged();
+                            });
+    page.Children().Append(side.root);
+    if (g_prefs.island != IslandSide::kOff) {
+        auto click = MakeSegment({T(L"클릭은 통과", L"Clicks pass"), T(L"클릭하면 작업표시줄", L"Click shows taskbar")}, true,
+                                 28, g_prefs.islandReveals ? 1 : 0, [](int i) {
+                                     g_prefs.islandReveals = i == 1;
+                                     SavePrefs();
+                                     OnShowChanged();
+                                 });
+        click.root.Margin({0, 6, 0, 0});
+        page.Children().Append(click.root);
+    }
+    page.Children().Append(Help(T(L"자동 숨김 작업표시줄이 들어가 PillTaskbar 아일랜드가 보일 때 그 옆에 붙습니다",
+                                  L"Sits beside PillTaskbar's island while an auto-hide taskbar is hidden")));
 
     page.Children().Append(SectionHead(T(L"정리할 곳", L"What to clean"), T(L"지금 정리와 자동 정리", L"Now and automatic")));
     auto area = [](unsigned bit, PCWSTR ko, PCWSTR en) {
@@ -3023,6 +3544,7 @@ void Tick() {
     g_tick++;
     g_mem = ReadMem();
     g_percent = int(g_mem.percent + 0.5);
+    g_cpu = std::clamp(int(ReadCpu() + 0.5), 0, 100);
     if (g_tick % 5 == 1) PlaceWidgets();
     for (auto& w : g_widgets) {
         if (!Parent(w->root)) {
@@ -3031,6 +3553,7 @@ void Tick() {
         }
     }
     for (auto& w : g_widgets) PaintWidget(*w);
+    SyncIslands();
     if (g_panel) {
         RefreshClean();
         RefreshPrograms();
@@ -3056,7 +3579,16 @@ void CheckPrefsChanged() {
     if (!stamp || stamp == g_prefsStamp) return;
     LoadPrefs();
     for (auto& w : g_widgets) PaintWidget(*w, true);
+    SyncIslands();
     if (g_panel && g_panel->page != Page::kPick) ShowPage(g_panel->page);
+}
+
+// What the icons show or how they look changed (the settings, a right click): the
+// widgets and islands draw again, and the open settings page shows it.
+void OnShowChanged() {
+    for (auto& w : g_widgets) PaintWidget(*w, true);
+    SyncIslands();
+    if (g_panel && g_panel->page == Page::kSettings) ShowPage(Page::kSettings);
 }
 
 void Start() {
@@ -3070,7 +3602,9 @@ void Start() {
     CreateFlyoutWindow();
     g_mem = ReadMem();
     g_percent = int(g_mem.percent + 0.5);
+    ReadCpu();  // the first reading, for the first tick to compare with
     PlaceWidgets();
+    SyncIslands();
     g_timer = g_queue.CreateTimer();
     g_timer.Interval(std::chrono::seconds(g_refreshSeconds));
     g_timer.Tick([](auto&&, auto&&) { Tick(); });
@@ -3092,6 +3626,7 @@ void Stop() {
     }
     ClosePanel();
     DestroyFlyoutWindow();
+    StopIslands();
     for (auto& w : g_widgets) RemoveWidget(*w);
     g_widgets.clear();
     g_queue = nullptr;
@@ -3139,6 +3674,7 @@ BOOL Wh_ModSettingsChanged(BOOL* bReload) {
         if (g_timer) g_timer.Interval(std::chrono::seconds(seconds));
         g_look = look;
         for (auto& w : g_widgets) PaintWidget(*w, true);
+        SyncIslands();
         ClosePanel();  // the window opens again in the new look
     });
     return TRUE;

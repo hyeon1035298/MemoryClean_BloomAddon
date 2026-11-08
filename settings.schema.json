@@ -19,6 +19,25 @@
           "name": { "ko": "작업표시줄 아이콘", "en": "Taskbar icon", "ja": "タスクバーのアイコン", "zh": "任务栏图标" }
         },
         {
+          "key": "widget.show",
+          "type": "choice",
+          "file": "prefs.json",
+          "field": "show",
+          "default": 0,
+          "options": [
+            { "value": 0, "name": { "ko": "메모리", "en": "Memory", "ja": "メモリ", "zh": "内存" } },
+            { "value": 1, "name": { "ko": "CPU", "en": "CPU", "ja": "CPU", "zh": "CPU" } },
+            { "value": 2, "name": { "ko": "메모리+CPU", "en": "Memory+CPU", "ja": "メモリ+CPU", "zh": "内存+CPU" } }
+          ],
+          "name": { "ko": "표시 항목", "en": "Shows", "ja": "表示する項目", "zh": "显示项目" },
+          "about": {
+            "ko": "아이콘을 우클릭해도 메모리와 CPU가 바뀝니다",
+            "en": "Right-clicking the icon also switches memory and CPU",
+            "ja": "アイコンを右クリックしてもメモリと CPU が切り替わります",
+            "zh": "右键单击图标也可在内存和 CPU 之间切换"
+          }
+        },
+        {
           "key": "widget.refreshSeconds",
           "type": "int",
           "default": 2,
@@ -31,6 +50,43 @@
             "ja": "メモリ使用率を読み直す間隔です",
             "zh": "重新读取内存使用率的间隔"
           }
+        }
+      ]
+    },
+    {
+      "id": "island",
+      "name": { "ko": "아일랜드", "en": "Island", "ja": "アイランド", "zh": "岛" },
+      "items": [
+        {
+          "key": "island.side",
+          "type": "choice",
+          "file": "prefs.json",
+          "field": "island",
+          "default": 0,
+          "options": [
+            { "value": 0, "name": { "ko": "끔", "en": "Off", "ja": "オフ", "zh": "关闭" } },
+            { "value": 1, "name": { "ko": "왼쪽에 붙임", "en": "On the left", "ja": "左に付ける", "zh": "附在左侧" } },
+            { "value": 2, "name": { "ko": "오른쪽에 붙임", "en": "On the right", "ja": "右に付ける", "zh": "附在右侧" } }
+          ],
+          "name": { "ko": "아일랜드 옆에 표시", "en": "Show beside the island", "ja": "アイランドの横に表示", "zh": "在岛旁显示" },
+          "about": {
+            "ko": "자동 숨김 작업표시줄이 들어가 PillTaskbar 아일랜드가 보일 때, 그 옆에 작은 아일랜드로 붙습니다",
+            "en": "While an auto-hide taskbar is hidden and PillTaskbar's island shows, a small island sits beside it",
+            "ja": "自動的に隠れるタスクバーが隠れて PillTaskbar のアイランドが見えるとき、その横に小さなアイランドとして付きます",
+            "zh": "自动隐藏的任务栏隐藏且显示 PillTaskbar 的岛时，在其旁边以小岛显示"
+          }
+        },
+        {
+          "key": "island.click",
+          "type": "choice",
+          "file": "prefs.json",
+          "field": "islandClick",
+          "default": 0,
+          "options": [
+            { "value": 0, "name": { "ko": "클릭은 통과", "en": "Clicks pass through", "ja": "クリックは通過", "zh": "点击穿透" } },
+            { "value": 1, "name": { "ko": "클릭하면 작업표시줄 꺼내기", "en": "A click shows the taskbar", "ja": "クリックでタスクバーを表示", "zh": "点击显示任务栏" } }
+          ],
+          "name": { "ko": "아일랜드를 클릭하면", "en": "Clicking the island", "ja": "アイランドをクリックすると", "zh": "点击岛时" }
         }
       ]
     },
