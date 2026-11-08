@@ -1067,17 +1067,22 @@ const Outline& OutlineOf(Meter m) {
             o.pins.push_back({kW / 2 + x - kPinW / 2, top, kPinW, 2.9 + kStroke / 2});
         return o;
     }();
+    // The processor's pins end where the module's body and feet do, so both stand as tall
+    // and as wide (XAML strokes a Rectangle inside its bounds).
     static const Outline cpu = [] {
-        Outline o{{3.1, 2.6, kW - 6.2, kH - 5.2}, 2.8, {}};
-        double reach = 2.3;  // how far the pins stand out of the body
-        double bottom = o.body.y + o.body.h - kStroke / 2, right = o.body.x + o.body.w - kStroke / 2;
+        Box4 b = ram.body;
+        double bottom = ram.pins[0].y + ram.pins[0].h;
+        double reach = 1.8;  // how far the pins stand out of the body
+        Outline o{{b.x + reach, b.y + reach, b.w - 2 * reach, bottom - b.y - 2 * reach}, 2.8, {}};
+        double cx = o.body.x + o.body.w / 2, cy = o.body.y + o.body.h / 2;
+        double lower = o.body.y + o.body.h - kStroke / 2, right = o.body.x + o.body.w - kStroke / 2;
         for (double x : {-5.2, 0.0, 5.2}) {
-            o.pins.push_back({kW / 2 + x - kPinW / 2, o.body.y - reach, kPinW, reach + kStroke / 2});
-            o.pins.push_back({kW / 2 + x - kPinW / 2, bottom, kPinW, reach + kStroke / 2});
+            o.pins.push_back({cx + x - kPinW / 2, o.body.y - reach, kPinW, reach + kStroke / 2});
+            o.pins.push_back({cx + x - kPinW / 2, lower, kPinW, reach + kStroke / 2});
         }
         for (double y : {-2.6, 2.6}) {
-            o.pins.push_back({o.body.x - reach, kH / 2 + y - kPinW / 2, reach + kStroke / 2, kPinW});
-            o.pins.push_back({right, kH / 2 + y - kPinW / 2, reach + kStroke / 2, kPinW});
+            o.pins.push_back({o.body.x - reach, cy + y - kPinW / 2, reach + kStroke / 2, kPinW});
+            o.pins.push_back({right, cy + y - kPinW / 2, reach + kStroke / 2, kPinW});
         }
         return o;
     }();
@@ -1305,7 +1310,9 @@ std::unique_ptr<Widget> BuildWidget(HWND taskbar) {
     w->root.Background(Brush(0));
     w->row = wuxc::StackPanel();
     w->row.Orientation(wuxc::Orientation::Horizontal);
-    w->row.Spacing(4);
+    // Two icons stand as far apart as two tray icons: the 15 between the brightness add-on's
+    // icon (6 + 2) and this widget's (2 + 5).
+    w->row.Spacing(15);
     w->root.Children().Append(w->row);
     Widget* raw = w.get();
     w->root.PointerEntered([raw](auto&&, auto&&) {
