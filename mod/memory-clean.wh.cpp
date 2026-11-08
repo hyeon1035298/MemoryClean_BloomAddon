@@ -1058,7 +1058,7 @@ struct Outline {
 };
 
 // A RAM module stands on six feet, the middle one left out for the key notch. A processor
-// is a smaller body with pins on all four sides.
+// has pins on its sides and three below.
 const Outline& OutlineOf(Meter m) {
     static const Outline ram = [] {
         Outline o{{1.15, 0.95, kW - 2.3, 13.3}, 3.6, {}};
@@ -1067,23 +1067,21 @@ const Outline& OutlineOf(Meter m) {
             o.pins.push_back({kW / 2 + x - kPinW / 2, top, kPinW, 2.9 + kStroke / 2});
         return o;
     }();
-    // The processor's pins end where the module's body and feet do, so both stand as tall
-    // and as wide (XAML strokes a Rectangle inside its bounds).
+    // The processor's body is as tall as the module's and in the same place, so the numbers
+    // of the two (and of the brightness add-on's monitor) stand at one height; its side pins
+    // end where the module's body does and its legs where the module's feet do (XAML strokes
+    // a Rectangle inside its bounds).
     static const Outline cpu = [] {
         Box4 b = ram.body;
-        double bottom = ram.pins[0].y + ram.pins[0].h;
-        double reach = 1.8;  // how far the pins stand out of the body
-        Outline o{{b.x + reach, b.y + reach, b.w - 2 * reach, bottom - b.y - 2 * reach}, 2.8, {}};
+        double reach = 1.8;  // how far the side pins stand out of the body
+        Outline o{{b.x + reach, b.y, b.w - 2 * reach, b.h}, 3.2, {}};
         double cx = o.body.x + o.body.w / 2, cy = o.body.y + o.body.h / 2;
-        double lower = o.body.y + o.body.h - kStroke / 2, right = o.body.x + o.body.w - kStroke / 2;
-        for (double x : {-5.2, 0.0, 5.2}) {
-            o.pins.push_back({cx + x - kPinW / 2, o.body.y - reach, kPinW, reach + kStroke / 2});
-            o.pins.push_back({cx + x - kPinW / 2, lower, kPinW, reach + kStroke / 2});
-        }
-        for (double y : {-2.6, 2.6}) {
+        double right = o.body.x + o.body.w - kStroke / 2;
+        for (double y : {-2.8, 2.8}) {
             o.pins.push_back({o.body.x - reach, cy + y - kPinW / 2, reach + kStroke / 2, kPinW});
             o.pins.push_back({right, cy + y - kPinW / 2, reach + kStroke / 2, kPinW});
         }
+        for (double x : {-5.4, 0.0, 5.4}) o.pins.push_back({cx + x - kPinW / 2, ram.pins[0].y, kPinW, ram.pins[0].h});
         return o;
     }();
     return m == Meter::kCpu ? cpu : ram;
