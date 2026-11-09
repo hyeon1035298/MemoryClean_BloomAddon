@@ -12,11 +12,70 @@
           "field": "icon",
           "default": 1,
           "options": [
-            { "value": 0, "name": { "ko": "선", "en": "Line", "ja": "線", "zh": "线条" } },
-            { "value": 1, "name": { "ko": "채움", "en": "Fill", "ja": "塗り", "zh": "填充" } },
-            { "value": 2, "name": { "ko": "꽉 채움", "en": "Solid", "ja": "べた塗り", "zh": "实心" } }
+            {
+              "value": 0,
+              "name": { "ko": "선", "en": "Line", "ja": "線", "zh": "线条" },
+              "easy": {
+                "name": { "ko": "선", "en": "Outline", "ja": "線", "zh": "线条" },
+                "picture": {
+                  "shapes": [
+                    { "box": [13.3, 5.9, 45.4, 26.6], "r": 7.2, "stroke": "ink", "width": 1.4 },
+                    { "box": [20.3, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [25.5, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [30.7, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [37.9, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [43.1, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [48.3, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "text": "62", "at": [36, 19.2], "size": 18 }
+                  ]
+                }
+              }
+            },
+            {
+              "value": 1,
+              "name": { "ko": "채움", "en": "Fill", "ja": "塗り", "zh": "填充" },
+              "easy": {
+                "name": { "ko": "채움", "en": "Filled", "ja": "塗り", "zh": "填充" },
+                "picture": {
+                  "shapes": [
+                    { "box": [13.3, 5.9, 28.1, 26.6], "r": 7.2, "corners": "left", "fill": "accent", "alpha": 0.32 },
+                    { "box": [13.3, 5.9, 45.4, 26.6], "r": 7.2, "stroke": "ink", "width": 1.4 },
+                    { "box": [20.3, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [25.5, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [30.7, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [37.9, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [43.1, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [48.3, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "text": "62", "at": [36, 19.2], "size": 18 }
+                  ]
+                }
+              }
+            },
+            {
+              "value": 2,
+              "name": { "ko": "꽉 채움", "en": "Solid", "ja": "べた塗り", "zh": "实心" },
+              "easy": {
+                "name": { "ko": "꽉 채움", "en": "Solid", "ja": "べた塗り", "zh": "实心" },
+                "picture": {
+                  "shapes": [
+                    { "box": [13.3, 5.9, 45.4, 26.6], "r": 7.2 },
+                    { "box": [20.3, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [25.5, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [30.7, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [37.9, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [43.1, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "box": [48.3, 32.5, 3.4, 4.8], "r": 0.8 },
+                    { "text": "62", "at": [36, 19.2], "size": 18, "fill": "btn" }
+                  ]
+                }
+              }
+            }
           ],
-          "name": { "ko": "작업표시줄 아이콘", "en": "Taskbar icon", "ja": "タスクバーのアイコン", "zh": "任务栏图标" }
+          "name": { "ko": "작업표시줄 아이콘", "en": "Taskbar icon", "ja": "タスクバーのアイコン", "zh": "任务栏图标" },
+          "easy": {
+            "name": { "ko": "아이콘 모양", "en": "Icon look", "ja": "アイコンの形", "zh": "图标样式" },
+            "about": { "ko": "숫자는 지금 쓰는 양입니다", "en": "The number is what is in use now", "ja": "数字は今使っている量です", "zh": "数字是当前的使用量" }
+          }
         },
         {
           "key": "widget.show",
@@ -25,9 +84,60 @@
           "field": "show",
           "default": 0,
           "options": [
-            { "value": 0, "name": { "ko": "메모리", "en": "Memory", "ja": "メモリ", "zh": "内存" } },
-            { "value": 1, "name": { "ko": "CPU", "en": "CPU", "ja": "CPU", "zh": "CPU" } },
-            { "value": 2, "name": { "ko": "메모리+CPU", "en": "Memory+CPU", "ja": "メモリ+CPU", "zh": "内存+CPU" } }
+            {
+              "value": 0,
+              "name": { "ko": "메모리", "en": "Memory", "ja": "メモリ", "zh": "内存" },
+              "easy": {
+                "name": { "ko": "메모리", "en": "Memory", "ja": "メモリ", "zh": "内存" },
+                "picture": {
+                  "shapes": [
+                    { "text": "62%", "at": [36, 18], "size": 13, "fill": "accent" },
+                    {
+                      "text": { "ko": "메모리", "en": "Memory", "ja": "メモリ", "zh": "内存" },
+                      "at": [36, 31],
+                      "size": 7.5,
+                      "bold": false,
+                      "alpha": 0.75
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "value": 1,
+              "name": { "ko": "CPU", "en": "CPU", "ja": "CPU", "zh": "CPU" },
+              "easy": {
+                "name": { "ko": "CPU", "en": "CPU" },
+                "picture": {
+                  "shapes": [
+                    { "text": "12%", "at": [36, 18], "size": 13, "fill": "accent" },
+                    { "text": "CPU", "at": [36, 31], "size": 7.5, "bold": false, "alpha": 0.75 }
+                  ]
+                }
+              }
+            },
+            {
+              "value": 2,
+              "name": { "ko": "메모리+CPU", "en": "Memory+CPU", "ja": "メモリ+CPU", "zh": "内存+CPU" },
+              "easy": {
+                "name": { "ko": "둘 다", "en": "Both", "ja": "両方", "zh": "两者" },
+                "picture": {
+                  "shapes": [
+                    { "text": "62%", "at": [21, 18], "width": 30, "size": 11.5, "fill": "accent" },
+                    {
+                      "text": { "ko": "메모리", "en": "Memory", "ja": "メモリ", "zh": "内存" },
+                      "at": [21, 31],
+                      "width": 30,
+                      "size": 7,
+                      "bold": false,
+                      "alpha": 0.75
+                    },
+                    { "text": "12%", "at": [51, 18], "width": 30, "size": 11.5, "fill": "accent" },
+                    { "text": "CPU", "at": [51, 31], "width": 30, "size": 7, "bold": false, "alpha": 0.75 }
+                  ]
+                }
+              }
+            }
           ],
           "name": { "ko": "표시 항목", "en": "Shows", "ja": "表示する項目", "zh": "显示项目" },
           "about": {
@@ -35,6 +145,15 @@
             "en": "Right-clicking the icon also switches memory and CPU",
             "ja": "アイコンを右クリックしてもメモリと CPU が切り替わります",
             "zh": "右键单击图标也可在内存和 CPU 之间切换"
+          },
+          "easy": {
+            "name": { "ko": "보일 값", "en": "Value shown", "ja": "表示する値", "zh": "显示的数值" },
+            "about": {
+              "ko": "아이콘을 오른쪽 클릭해도 바뀝니다",
+              "en": "Right-clicking the icon changes it too",
+              "ja": "アイコンを右クリックしても切り替わります",
+              "zh": "右键单击图标也可以切换"
+            }
           }
         },
         {
@@ -49,9 +168,11 @@
             "en": "How often the memory use is read again",
             "ja": "メモリ使用率を読み直す間隔です",
             "zh": "重新读取内存使用率的间隔"
-          }
+          },
+          "easy": { "name": { "ko": "새로 고침 간격", "en": "Refresh every", "ja": "更新間隔", "zh": "刷新间隔" }, "about": "", "more": true }
         }
-      ]
+      ],
+      "easy": { "name": { "ko": "작업표시줄 아이콘", "en": "Taskbar icon", "ja": "タスクバーのアイコン", "zh": "任务栏图标" } }
     },
     {
       "id": "clean",
@@ -81,7 +202,8 @@
             "zh": "用于立即清理和自动清理。整个备用列表和已修改页面可能会短暂卡顿，因此自动清理不包括它们。"
           }
         }
-      ]
+      ],
+      "easy": { "name": { "ko": "정리", "en": "Cleaning", "ja": "解放", "zh": "清理" } }
     },
     {
       "id": "auto",
@@ -99,6 +221,17 @@
             "en": "Cleans when the memory use passes the limit, at most every 30 seconds.",
             "ja": "使用率が基準を超えると解放します。30 秒に 1 回までです。",
             "zh": "内存使用率超过阈值时清理，最多每 30 秒一次。"
+          },
+          "easy": {
+            "name": { "ko": "메모리가 많이 차면 정리", "en": "Clean when memory fills up", "ja": "メモリが多く使われたら解放", "zh": "内存占用高时清理" },
+            "about": { "ko": "30초에 한 번까지", "en": "At most once every 30 seconds", "ja": "30 秒に 1 回まで", "zh": "最多每 30 秒一次" },
+            "thumb": {
+              "shapes": [
+                { "box": [6, 13, 48, 10], "r": 3, "alpha": 0.18 },
+                { "box": [6, 13, 43, 10], "r": 3, "alpha": 0.45 },
+                { "path": "M 49.2,9 V 27", "stroke": "accent", "width": 1.6 }
+              ]
+            }
           }
         },
         {
@@ -109,7 +242,8 @@
           "default": 90,
           "min": 50,
           "max": 99,
-          "name": { "ko": "기준 사용률 (%)", "en": "Memory use limit (%)", "ja": "基準の使用率 (%)", "zh": "使用率阈值 (%)" }
+          "name": { "ko": "기준 사용률 (%)", "en": "Memory use limit (%)", "ja": "基準の使用率 (%)", "zh": "使用率阈值 (%)" },
+          "easy": { "name": { "ko": "기준", "en": "At", "ja": "基準", "zh": "阈值" }, "when": { "key": "auto.percentOn" } }
         },
         {
           "key": "auto.intervalOn",
@@ -117,7 +251,18 @@
           "file": "prefs.json",
           "field": "autoIntervalOn",
           "default": false,
-          "name": { "ko": "일정 간격 자동 정리", "en": "Clean every so often", "ja": "一定間隔の自動解放", "zh": "定时自动清理" }
+          "name": { "ko": "일정 간격 자동 정리", "en": "Clean every so often", "ja": "一定間隔の自動解放", "zh": "定时自动清理" },
+          "easy": {
+            "name": { "ko": "정해진 시간마다 정리", "en": "Clean on a schedule", "ja": "決まった間隔で解放", "zh": "按固定间隔清理" },
+            "about": "",
+            "thumb": {
+              "shapes": [
+                { "dot": [20, 18, 11], "stroke": "ink", "alpha": 0.45 },
+                { "path": "M 20,11 V 18 L 25,21", "stroke": "ink", "width": 1.3 },
+                { "path": "M 36,18 H 50 M 46,14 L 50,18 46,22", "stroke": "ink", "width": 1.3 }
+              ]
+            }
+          }
         },
         {
           "key": "auto.minutes",
@@ -127,7 +272,12 @@
           "default": 30,
           "min": 1,
           "max": 1440,
-          "name": { "ko": "정리 간격(분)", "en": "Interval (min)", "ja": "解放の間隔 (min)", "zh": "清理间隔 (min)" }
+          "name": { "ko": "정리 간격(분)", "en": "Interval (min)", "ja": "解放の間隔 (min)", "zh": "清理间隔 (min)" },
+          "easy": {
+            "name": { "ko": "간격", "en": "Every", "ja": "間隔", "zh": "间隔" },
+            "when": { "key": "auto.intervalOn" },
+            "minutes": true
+          }
         }
       ]
     },
@@ -149,9 +299,19 @@
             "en": "Programs listed here keep their working sets when memory is cleaned",
             "ja": "ここにあるプログラムは、解放のときにワーキングセットを空けません",
             "zh": "清理内存时不清空此处列出的程序的工作集"
-          }
+          },
+          "easy": { "name": { "ko": "프로그램", "en": "Program", "ja": "プログラム", "zh": "程序" } }
         }
-      ]
+      ],
+      "easy": {
+        "name": { "ko": "정리하지 않을 프로그램", "en": "Programs left alone", "ja": "解放しないプログラム", "zh": "不清理的程序" },
+        "about": {
+          "ko": "정리할 때 이 프로그램들의 메모리는 비우지 않습니다",
+          "en": "Cleaning leaves these programs' memory as it is",
+          "ja": "解放するとき、これらのプログラムのメモリは空けません",
+          "zh": "清理时不释放这些程序的内存"
+        }
+      }
     },
     {
       "id": "pill",
@@ -188,5 +348,61 @@
         }
       ]
     }
-  ]
+  ],
+  "easy": {
+    "pictures": {
+      "clean.strength": {
+        "light": {
+          "shapes": [
+            { "box": [6, 14, 60, 12], "r": 3, "alpha": 0.18 },
+            { "box": [6, 14, 40, 12], "r": 3, "corners": "left", "alpha": 0.45 },
+            { "box": [46, 14, 8, 12], "fill": "accent" },
+            {
+              "text": { "ko": "조금 비움", "en": "A little", "ja": "少し解放", "zh": "少量清理" },
+              "at": [36, 36],
+              "size": 7,
+              "bold": false,
+              "alpha": 0.75
+            }
+          ]
+        },
+        "normal": {
+          "shapes": [
+            { "box": [6, 14, 60, 12], "r": 3, "alpha": 0.18 },
+            { "box": [6, 14, 28, 12], "r": 3, "corners": "left", "alpha": 0.45 },
+            { "box": [34, 14, 20, 12], "fill": "accent" },
+            {
+              "text": { "ko": "알맞게 비움", "en": "Some", "ja": "ほどよく解放", "zh": "适量清理" },
+              "at": [36, 36],
+              "size": 7,
+              "bold": false,
+              "alpha": 0.75
+            }
+          ]
+        },
+        "strong": {
+          "shapes": [
+            { "box": [6, 14, 60, 12], "r": 3, "alpha": 0.18 },
+            { "box": [6, 14, 14, 12], "r": 3, "corners": "left", "alpha": 0.45 },
+            { "box": [20, 14, 34, 12], "fill": "accent" },
+            {
+              "text": { "ko": "많이 비움", "en": "A lot", "ja": "たくさん解放", "zh": "大量清理" },
+              "at": [36, 36],
+              "size": 7,
+              "bold": false,
+              "alpha": 0.75
+            }
+          ]
+        },
+        "custom": {
+          "shapes": [
+            { "path": "M 14,13 H 58 M 14,22 H 58 M 14,31 H 58", "stroke": "ink", "width": 1.3, "alpha": 0.6 },
+            { "dot": [26, 13, 3.2], "fill": "accent" },
+            { "dot": [46, 22, 3.2], "fill": "accent" },
+            { "dot": [33, 31, 3.2], "fill": "accent" }
+          ]
+        }
+      }
+    }
+  }
 }
