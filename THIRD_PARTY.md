@@ -41,7 +41,7 @@ in `THIRD_PARTY_NOTICES.txt` next to the binaries.
 | Library | License | Used for |
 |---|---|---|
 | [MinHook](https://github.com/TsudaKageyu/minhook) 1.3.4 (with HDE64) | BSD-2-Clause | function hooks |
-| [Zydis](https://github.com/zyantific/zydis) / Zycore 4.1.0 amalgamation | MIT | `Wh_Disasm` |
+| [Zydis](https://github.com/zyantific/zydis) / Zycore 4.1.0 amalgamation | MIT | `Wh_Disasm` (runtime) and the symbol porter's instruction decoder (host) |
 | mingw-w64 runtime | see `COPYING.MinGW-w64-runtime.txt` | C runtime startup code |
 | libc++, libunwind, compiler-rt (LLVM 20) | Apache-2.0 WITH LLVM-exception | the statically linked C++ runtime |
 | [C++/WinRT](https://github.com/microsoft/cppwinrt) | MIT | headers the mod includes |

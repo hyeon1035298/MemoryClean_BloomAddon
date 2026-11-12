@@ -62,6 +62,12 @@ jobs:
       - name: Build
         run: PILL_ROOT=pill bash build.sh
 
+      # The pure-logic checks (arguments, symbol-meta and port-sources parsing, the porter's
+      # sidecar formats, exit ranking). No explorer and no network; the exit code is the number
+      # of failed checks, so any failure fails the job.
+      - name: Host self-test
+        run: build/addon/MemoryCleanHost.exe --self-test
+
       - name: Write SOURCE.txt
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -78,7 +84,7 @@ jobs:
           out="dist/MemoryClean_BloomAddon"
           mkdir -p "$out"
           cp LICENSE "$out/"
-          for f in MemoryCleanHost.exe MemoryCleanRuntime.dll MemoryClean.dll MemoryCleanHelper.exe symbols.txt \
+          for f in MemoryCleanHost.exe MemoryCleanRuntime.dll MemoryClean.dll MemoryCleanHelper.exe symbols.txt symbols-meta.txt port-sources.txt \
                    settings.schema.json addon.json THIRD_PARTY.md THIRD_PARTY_NOTICES.txt SOURCE.txt; do
             if [ -f "build/addon/$f" ]; then
               cp "build/addon/$f" "$out/"
@@ -91,6 +97,17 @@ jobs:
             echo "SOURCE.txt missing on a tag build" >&2
             exit 1
           fi
+          # Bloom refuses the zip unless every file addon.json lists is in it with that SHA-256.
+          python -I - "$out" <<'PY'
+          import hashlib, json, os, sys
+          out = sys.argv[1]
+          files = json.load(open(os.path.join(out, "addon.json"), encoding="utf-8"))["files"]
+          bad = [n for n, h in files.items()
+                 if not os.path.isfile(os.path.join(out, n))
+                 or hashlib.sha256(open(os.path.join(out, n), "rb").read()).hexdigest() != h.lower()]
+          if bad:
+              sys.exit("not staged as addon.json lists: " + ", ".join(bad))
+          PY
           ls -l "$out"
 
       - name: Zip
