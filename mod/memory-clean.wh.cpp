@@ -362,6 +362,21 @@ wuxm::SolidColorBrush Brush(uint32_t argb) {
     return wuxm::SolidColorBrush(winrt::Windows::UI::Color{BYTE(argb >> 24), BYTE(argb >> 16), BYTE(argb >> 8), BYTE(argb)});
 }
 
+// A Thickness or CornerRadius boxed by XAML itself. box_value boxes these XAML structs in
+// this DLL, and a style or resource dictionary that keeps the box would release it after
+// the DLL is unloaded.
+wf::IInspectable XamlBox(wux::Thickness t) {
+    wuxc::Border b;
+    b.Padding(t);
+    return b.GetValue(wuxc::Border::PaddingProperty());
+}
+
+wf::IInspectable XamlBox(wux::CornerRadius r) {
+    wuxc::Border b;
+    b.CornerRadius(r);
+    return b.GetValue(wuxc::Border::CornerRadiusProperty());
+}
+
 uint32_t WithAlpha(uint32_t argb, BYTE alpha) {
     return (argb & 0x00FFFFFF) | (uint32_t(alpha) << 24);
 }
@@ -637,7 +652,7 @@ bool Post(std::function<void()> work) {
     g_pending++;
     bool queued = false;
     try {
-        queued = queue.TryEnqueue([work = std::move(work)] {
+        queued = queue.TryEnqueue([work = std::move(work)]() mutable {
             if (!g_unloading) {
                 try {
                     work();
@@ -645,6 +660,7 @@ bool Post(std::function<void()> work) {
                     Wh_Log(L"posted work failed: %08X", winrt::to_hresult());
                 }
             }
+            work = nullptr;  // what it holds (revokers among them) goes while the unload still waits
             g_pending--;
         });
     } catch (...) {
@@ -1133,6 +1149,15 @@ std::optional<InkBox> MeasureInk(const std::wstring& s, double size) {
 }
 
 // Puts a TextBlock on its Canvas with the ink of its text, not its line box, centred on
+// Event revokers: an element's handlers are revoked when these go, so a handler in this
+// DLL never outlives it in XAML.
+using Handlers = std::vector<std::shared_ptr<void>>;
+
+template <class R>
+void Hold(Handlers& handlers, R&& revoker) {
+    handlers.push_back(std::make_shared<std::decay_t<R>>(std::forward<R>(revoker)));
+}
+
 // (cx, cy): a line box keeps room above the digits, so centring it puts them low. XAML draws
 // text pushed down to whole pixels, so the top goes on a whole pixel and the baseline is
 // counted from it in whole pixels. units: pixels per canvas unit before the XAML root's scale.
@@ -1159,6 +1184,7 @@ struct MeterIcon {
     std::vector<wuxs::Rectangle> pins;
     wuxc::TextBlock text{nullptr};
     double scale = 1;
+    Handlers handlers;  // the canvas's
 
     void Build(Meter m, double s) {
         meter = m;
@@ -1200,7 +1226,7 @@ struct MeterIcon {
         inner.Children().Append(text);
         canvas.Children().Append(inner);
         // The pixel grid is known once the icon is on a taskbar.
-        canvas.Loaded([t = text, m, s](auto&&, auto&&) { PlaceText(t, m, s); });
+        Hold(handlers, canvas.Loaded(winrt::auto_revoke, [t = text, m, s](auto&&, auto&&) { PlaceText(t, m, s); }));
     }
 
     static void PlaceText(const wuxc::TextBlock& t, Meter m, double s) {
@@ -1241,6 +1267,7 @@ struct Widget {
     IconStyle style{};
     const Palette* palette = nullptr;
     bool hover = false;
+    Handlers handlers;  // root's
 };
 std::vector<std::unique_ptr<Widget>> g_widgets;  // taskbar thread
 Mem g_mem;
@@ -1262,8 +1289,8 @@ std::wstring TipOf(Meter m) {
 void PaintWidget(Widget& w, bool force = false) {
     const Palette& c = PaletteFor(w.root);
     if (w.icons.empty() || w.show != g_prefs.show) {
+        w.icons.clear();  // their handlers first
         w.row.Children().Clear();
-        w.icons.clear();
         for (Meter m : MetersOf(g_prefs.show)) {
             w.icons.emplace_back().Build(m, 1.0);
             w.row.Children().Append(w.icons.back().canvas);
@@ -1313,32 +1340,43 @@ std::unique_ptr<Widget> BuildWidget(HWND taskbar) {
     w->row.Spacing(15);
     w->root.Children().Append(w->row);
     Widget* raw = w.get();
-    w->root.PointerEntered([raw](auto&&, auto&&) {
+    auto& h = w->handlers;
+    Hold(h, w->root.PointerEntered(winrt::auto_revoke, [raw](auto&&, auto&&) {
         raw->hover = true;
         PaintWidget(*raw, true);
-    });
-    w->root.PointerExited([raw](auto&&, auto&&) {
+    }));
+    Hold(h, w->root.PointerExited(winrt::auto_revoke, [raw](auto&&, auto&&) {
         raw->hover = false;
         PaintWidget(*raw, true);
-    });
-    w->root.Tapped([raw](auto&&, wux::Input::TappedRoutedEventArgs const& args) {
+    }));
+    Hold(h, w->root.Tapped(winrt::auto_revoke, [raw](auto&&, wux::Input::TappedRoutedEventArgs const& args) {
         args.Handled(true);
         TogglePanel(*raw);
-    });
-    w->root.RightTapped([](auto&&, wux::Input::RightTappedRoutedEventArgs const& args) {
+    }));
+    Hold(h, w->root.RightTapped(winrt::auto_revoke, [](auto&&, wux::Input::RightTappedRoutedEventArgs const& args) {
         args.Handled(true);
         SwitchMeter();
-    });
-    w->root.ContextRequested([](auto&&, wux::Input::ContextRequestedEventArgs const& args) { args.Handled(true); });
+    }));
+    Hold(h, w->root.ContextRequested(winrt::auto_revoke,
+                                     [](auto&&, wux::Input::ContextRequestedEventArgs const& args) { args.Handled(true); }));
     return w;
 }
 
-void RemoveWidget(Widget& w) {
+// Takes the root out of its panel; the widget can go in again.
+void DetachWidget(Widget& w) {
     if (!w.root) return;
     if (auto panel = Parent(w.root).try_as<wuxc::Panel>()) {
         uint32_t index;
         if (panel.Children().IndexOf(w.root, index)) panel.Children().RemoveAt(index);
     }
+}
+
+// For good: its handlers are revoked before XAML lets go of the elements, which can be a
+// frame later, when the add-on may be unloaded.
+void RemoveWidget(Widget& w) {
+    w.handlers.clear();
+    w.icons.clear();
+    DetachWidget(w);
 }
 
 // Every taskbar gets one, before its clock; ones whose tray was rebuilt go in again.
@@ -1358,7 +1396,7 @@ void PlaceWidgets() {
             g_widgets.push_back(BuildWidget(hwnd));
             it = g_widgets.end() - 1;
         } else {
-            RemoveWidget(**it);
+            DetachWidget(**it);
         }
         // A widget of an earlier load of this mod would be a stranger now.
         for (uint32_t i = tray.Children().Size(); i-- > 0;)
@@ -1527,11 +1565,11 @@ E InColumn(E e, int column) {
 
 // Handlers of the window's elements, revoked when the page is rebuilt or the window
 // closes: a handler holding its own element would otherwise keep it alive for good.
-std::vector<std::shared_ptr<void>> g_keep;
+Handlers g_keep;
 
 template <class R>
 void Keep(R&& revoker) {
-    g_keep.push_back(std::make_shared<std::decay_t<R>>(std::forward<R>(revoker)));
+    Hold(g_keep, std::forward<R>(revoker));
 }
 
 // Drops the page's handlers once the event that asked for it has finished.
@@ -1792,8 +1830,8 @@ void StyleTextBox(const wuxc::TextBox& box, const Palette& c) {
         res.Insert(box_value(key), Brush(argb));
     res.Insert(box_value(L"TextControlThemeMinHeight"), box_value(0.0));
     res.Insert(box_value(L"TextControlThemeMinWidth"), box_value(0.0));
-    res.Insert(box_value(L"TextControlThemePadding"), box_value(wux::Thickness{0, 0, 0, 0}));
-    res.Insert(box_value(L"TextControlBorderThemeThickness"), box_value(wux::Thickness{0, 0, 0, 0}));
+    res.Insert(box_value(L"TextControlThemePadding"), XamlBox(wux::Thickness{0, 0, 0, 0}));
+    res.Insert(box_value(L"TextControlBorderThemeThickness"), XamlBox(wux::Thickness{0, 0, 0, 0}));
 }
 
 // w8 field, height 28, radius 8: the number, then its unit in the faint colour.
@@ -2020,6 +2058,7 @@ struct PanelState {
     uint64_t lastCpuAt = 0;
     std::unordered_map<std::wstring, std::pair<std::wstring, std::wstring>> known;  // key -> (path, name)
     std::unordered_map<uint64_t, bool> admin;  // (pid ^ created) -> needs admin
+    Handlers flyoutHandlers;  // revoked first, while the flyout is still held
 };
 std::unique_ptr<PanelState> g_panel;
 uint64_t g_panelClosedAt = 0;
@@ -2687,6 +2726,7 @@ wux::UIElement BuildSettings() {
         chip.BorderBrush(Brush(Ink(c, on ? 25 : 15)));
         MeterIcon icon;
         icon.Build(sample, 16.0 / kH);
+        g_keep.insert(g_keep.end(), icon.handlers.begin(), icon.handlers.end());  // the page's from here
         icon.Paint(46, IconStyle(i), c);
         icon.canvas.HorizontalAlignment(wux::HorizontalAlignment::Center);
         icon.canvas.VerticalAlignment(wux::VerticalAlignment::Center);
@@ -2985,10 +3025,10 @@ wux::Style BarePresenter() {
     auto set = [&](const wux::DependencyProperty& property, const wf::IInspectable& value) {
         setters.Append(wux::Setter(property, value));
     };
-    set(wuxc::Control::PaddingProperty(), box_value(wux::Thickness{}));
+    set(wuxc::Control::PaddingProperty(), XamlBox(wux::Thickness{}));
     set(wuxc::Control::BackgroundProperty(), Brush(0));
-    set(wuxc::Control::BorderThicknessProperty(), box_value(wux::Thickness{}));
-    set(wuxc::Control::CornerRadiusProperty(), box_value(wux::CornerRadius{}));
+    set(wuxc::Control::BorderThicknessProperty(), XamlBox(wux::Thickness{}));
+    set(wuxc::Control::CornerRadiusProperty(), XamlBox(wux::CornerRadius{}));
     set(wuxc::FlyoutPresenter::IsDefaultShadowEnabledProperty(), box_value(false));
     set(wux::FrameworkElement::MinWidthProperty(), box_value(0.0));
     set(wux::FrameworkElement::MinHeightProperty(), box_value(0.0));
@@ -3097,15 +3137,17 @@ void TogglePanel(Widget& w) {
     p.flyout.Content(p.bubble);
     p.flyout.ShouldConstrainToRootBounds(false);
     p.flyout.ShowMode(wuxc::Primitives::FlyoutShowMode::Standard);
-    p.flyout.Opened([](auto&&, auto&&) { AllowHostBackdrop(); });
-    p.flyout.Closed([](wf::IInspectable const& sender, auto&&) {
+    Hold(p.flyoutHandlers, p.flyout.Opened(winrt::auto_revoke, [](auto&&, auto&&) { AllowHostBackdrop(); }));
+    Hold(p.flyoutHandlers, p.flyout.Closed(winrt::auto_revoke, [](wf::IInspectable const& sender, auto&&) {
         if (g_panel && g_panel->flyout == sender.try_as<wuxc::Flyout>()) {
-            g_panel.reset();
+            // The state, with this handler's revoker, goes once this event has finished.
+            auto old = std::make_shared<std::unique_ptr<PanelState>>(std::move(g_panel));
+            if (!Post([old] { old->reset(); })) old->reset();
             g_panelClosedAt = GetTickCount64();
             HoldTaskbar(nullptr);
             ReleaseHandlers();
         }
-    });
+    }));
     ShowPage(Page::kClean);
     // The window opens kGap clear of the taskbar's edge, not of the widget in its middle:
     // the widget's distance to that edge is measured in the taskbar's XAML root.
@@ -3182,6 +3224,7 @@ void OnKilled(const std::wstring& name, int killed, int left, int blocked, uint6
 
 winrt::Windows::System::DispatcherQueueTimer g_timer{nullptr};
 winrt::Windows::System::DispatcherQueueTimer g_prefsTimer{nullptr};
+Handlers g_timerHandlers;  // both timers' Tick
 int g_tick = 0;
 int g_refreshSeconds = 2;
 
@@ -3260,23 +3303,22 @@ void Start() {
     PublishFigures();
     g_timer = g_queue.CreateTimer();
     g_timer.Interval(std::chrono::seconds(g_refreshSeconds));
-    g_timer.Tick([](auto&&, auto&&) { Tick(); });
+    Hold(g_timerHandlers, g_timer.Tick(winrt::auto_revoke, [](auto&&, auto&&) { Tick(); }));
     g_timer.Start();
     g_prefsTimer = g_queue.CreateTimer();
     g_prefsTimer.Interval(std::chrono::seconds(1));
-    g_prefsTimer.Tick([](auto&&, auto&&) { CheckPrefsChanged(); });
+    Hold(g_timerHandlers, g_prefsTimer.Tick(winrt::auto_revoke, [](auto&&, auto&&) { CheckPrefsChanged(); }));
     g_prefsTimer.Start();
 }
 
+// Everything this DLL handed to XAML or the dispatcher is revoked or dropped here, on the
+// taskbar thread, before the unload goes on.
 void Stop() {
-    if (g_timer) {
-        g_timer.Stop();
-        g_timer = nullptr;
-    }
-    if (g_prefsTimer) {
-        g_prefsTimer.Stop();
-        g_prefsTimer = nullptr;
-    }
+    if (g_timer) g_timer.Stop();
+    if (g_prefsTimer) g_prefsTimer.Stop();
+    g_timerHandlers.clear();  // while the timers are still held, so the revokers reach them
+    g_timer = nullptr;
+    g_prefsTimer = nullptr;
     ClosePanel();
     DestroyFlyoutWindow();
     PublishFigures(true);
@@ -3316,6 +3358,10 @@ void Wh_ModBeforeUninit() {
 void Wh_ModUninit() {
     Wh_Log(L">");
     for (int i = 0; g_pending > 0 && i < 700; i++) Sleep(10);  // workers poll g_unloading
+    // The dispatcher releases a posted task just after it has run; the taskbar thread
+    // answers a sent message only once it is back in its message loop, past that.
+    if (HWND taskbar = PrimaryTaskbar())
+        SendMessageTimeoutW(taskbar, WM_NULL, 0, 0, SMTO_BLOCK | SMTO_ABORTIFHUNG, 1000, nullptr);
 }
 
 BOOL Wh_ModSettingsChanged(BOOL* bReload) {
