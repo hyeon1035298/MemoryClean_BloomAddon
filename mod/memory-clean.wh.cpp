@@ -1148,7 +1148,6 @@ std::optional<InkBox> MeasureInk(const std::wstring& s, double size) {
     return InkBox{-o.left, -o.top - line.baseline, o.right, o.bottom - line.baseline, line.baseline};
 }
 
-// Puts a TextBlock on its Canvas with the ink of its text, not its line box, centred on
 // Event revokers: an element's handlers are revoked when these go, so a handler in this
 // DLL never outlives it in XAML.
 using Handlers = std::vector<std::shared_ptr<void>>;
@@ -1158,6 +1157,7 @@ void Hold(Handlers& handlers, R&& revoker) {
     handlers.push_back(std::make_shared<std::decay_t<R>>(std::forward<R>(revoker)));
 }
 
+// Puts a TextBlock on its Canvas with the ink of its text, not its line box, centred on
 // (cx, cy): a line box keeps room above the digits, so centring it puts them low. XAML draws
 // text pushed down to whole pixels, so the top goes on a whole pixel and the baseline is
 // counted from it in whole pixels. units: pixels per canvas unit before the XAML root's scale.
