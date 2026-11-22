@@ -2,20 +2,26 @@
 // MemoryCleanHelper.exe: the administrator half of the Memory Clean add-on.
 //
 // The mod runs inside explorer.exe at medium integrity. Whatever needs administrator
-// rights it hands to this helper through a per-user scheduled task that runs with the
-// user's highest privileges. Each run does exactly one job, writes a result file into
-// the add-on's data folder and exits.
+// rights it hands to this helper. Cleaning goes through a per-user scheduled task that
+// runs with the user's highest privileges; ending programs the user cannot end without
+// administrator rights goes through a UAC prompt for each request. Each run does exactly
+// one job, writes a result file into the add-on's data folder and exits.
 //
 //   --install            copy this exe under Program Files and register the task
 //   --uninstall          remove the task, and the installed exe once no user's task is left
-//   --run v<n> clean <mask> <id>
-//   --run v<n> kill <id> <pid>:<creationTimeHex>[,<pid>:<creationTimeHex>...]
+//   --run v<n> clean <mask> <id>                      (the task)
+//   --ask v<n> kill <id> <pid>:<creationTimeHex>[,<pid>:<creationTimeHex>...]
+//                                                     (started with "runas": a UAC prompt)
 //
-// The task runs "--run $(Arg0)": only requests reach the elevated helper through it.
+// The task runs "--run $(Arg0)": only clean requests reach the elevated helper through it.
 // Any medium-integrity process of the user can start the task with any argument, so
 // every request is validated strictly and nothing named by an argument is ever opened,
-// loaded or run. The only files written by a task run live in the data folder below
-// %LOCALAPPDATA% of the helper's own token, reached through a verified directory handle.
+// loaded or run. Cleaning frees memory but ends nothing, which is why it may run on the
+// task's word alone; ending an elevated program would let any such process do what it
+// otherwise cannot, so "kill" is refused on the task and accepted only from "--ask", which
+// has administrator rights only once the user has accepted the prompt. The only files
+// written by a request live in the data folder below %LOCALAPPDATA% of the helper's own
+// token, reached through a verified directory handle.
 
 #include <windows.h>
 #include <winternl.h>
@@ -68,11 +74,16 @@ constexpr DWORD kBuildWindows81 = 9600;
 constexpr DWORD kBuildWindows10 = 10240;
 
 constexpr size_t kMaxIdLength = 40;
-constexpr size_t kMaxKillTargets = 256;
 constexpr size_t kMaxExclusions = 200;
 constexpr size_t kMaxExeNameLength = 260;
 constexpr LONGLONG kMaxPrefsBytes = 256 * 1024;
 constexpr DWORD kKillWaitMs = 2000;
+constexpr int kRenameAttempts = 20;
+constexpr DWORD kRenameRetryMs = 25;
+
+// NTSTATUS values from ntstatus.h, which clashes with windows.h.
+constexpr NTSTATUS kStatusAccessDenied = static_cast<NTSTATUS>(0xC0000022L);
+constexpr NTSTATUS kStatusSharingViolation = static_cast<NTSTATUS>(0xC0000043L);
 
 // Image names the kill request never ends, compared case-insensitively.
 constexpr PCWSTR kProtectedImages[] = {
@@ -102,6 +113,11 @@ public:
     }
     HANDLE Get() const { return h_; }
     HANDLE* Put() { Reset(); return &h_; }
+    HANDLE Release() {
+        HANDLE h = h_;
+        h_ = nullptr;
+        return h;
+    }
     explicit operator bool() const { return h_ != nullptr; }
 
 private:
@@ -296,6 +312,24 @@ bool IsPlainDirectory(HANDLE h) {
            !(info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT);
 }
 
+// Opens or creates a file, or with `directory` a folder, by name relative to a directory
+// handle. A reparse point is opened as itself, never followed.
+NTSTATUS OpenRelative(HANDLE dir, const std::wstring& name, ACCESS_MASK access,
+                      ULONG share, ULONG disposition, HANDLE* out, bool directory = false) {
+    UNICODE_STRING us;
+    us.Buffer = const_cast<PWSTR>(name.c_str());
+    us.Length = static_cast<USHORT>(name.size() * sizeof(WCHAR));
+    us.MaximumLength = us.Length;
+    OBJECT_ATTRIBUTES oa;
+    InitializeObjectAttributes(&oa, &us, OBJ_CASE_INSENSITIVE, dir, nullptr);
+    IO_STATUS_BLOCK iosb{};
+    return NtCreateFile(out, access | SYNCHRONIZE, &oa, &iosb, nullptr, FILE_ATTRIBUTE_NORMAL,
+                        share, disposition,
+                        (directory ? FILE_DIRECTORY_FILE : FILE_NON_DIRECTORY_FILE) |
+                            FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT,
+                        nullptr, 0);
+}
+
 // Opens (creating as needed) the data folder; returns nullptr when it cannot be trusted.
 HANDLE OpenDataFolder() {
     std::wstring local = KnownFolder(FOLDERID_LocalAppData);
@@ -317,49 +351,37 @@ HANDLE OpenDataFolder() {
                              TRUE) != CSTR_EQUAL)
         return nullptr;
 
-    // Create the folder one component at a time, refusing junctions and links.
+    // Create the folder one component at a time, each opened or created by name relative
+    // to the handle of the one before, never by path: a component renamed or swapped for a
+    // junction between two steps cannot redirect the next. Junctions and links are refused.
     std::wstring path = base;
     std::wstring rest = kDataFolder;
+    Handle dir;
+    HANDLE parent = localDir.Get();
     size_t start = 0;
     while (start <= rest.size()) {
         size_t end = rest.find(L'\\', start);
         if (end == std::wstring::npos) end = rest.size();
+        std::wstring name = rest.substr(start, end - start);
         path += L'\\';
-        path += rest.substr(start, end - start);
-        if (!CreateDirectoryW(path.c_str(), nullptr) &&
-            GetLastError() != ERROR_ALREADY_EXISTS)
+        path += name;
+        Handle part;
+        if (!NT_SUCCESS(OpenRelative(parent, name,
+                                     FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES,
+                                     FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF,
+                                     part.Put(), true)) ||
+            !IsPlainDirectory(part.Get()))
             return nullptr;
-        Handle part(OpenDirectory(path, true));
-        if (!part || !IsPlainDirectory(part.Get())) return nullptr;
+        dir.Reset(part.Release());
+        parent = dir.Get();
         start = end + 1;
     }
 
-    HANDLE dir = OpenDirectory(path, true);
-    if (dir == INVALID_HANDLE_VALUE) return nullptr;
-    std::wstring opened = FinalPathOf(dir);
-    if (!IsPlainDirectory(dir) || opened.empty() ||
-        CompareStringOrdinal(opened.c_str(), -1, path.c_str(), -1, TRUE) != CSTR_EQUAL) {
-        CloseHandle(dir);
+    std::wstring opened = FinalPathOf(dir.Get());
+    if (opened.empty() ||
+        CompareStringOrdinal(opened.c_str(), -1, path.c_str(), -1, TRUE) != CSTR_EQUAL)
         return nullptr;
-    }
-    return dir;
-}
-
-// Opens or creates a file by name relative to a directory handle.
-NTSTATUS OpenRelative(HANDLE dir, const std::wstring& name, ACCESS_MASK access,
-                      ULONG share, ULONG disposition, HANDLE* out) {
-    UNICODE_STRING us;
-    us.Buffer = const_cast<PWSTR>(name.c_str());
-    us.Length = static_cast<USHORT>(name.size() * sizeof(WCHAR));
-    us.MaximumLength = us.Length;
-    OBJECT_ATTRIBUTES oa;
-    InitializeObjectAttributes(&oa, &us, OBJ_CASE_INSENSITIVE, dir, nullptr);
-    IO_STATUS_BLOCK iosb{};
-    return NtCreateFile(out, access | SYNCHRONIZE, &oa, &iosb, nullptr, FILE_ATTRIBUTE_NORMAL,
-                        share, disposition,
-                        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT |
-                            FILE_OPEN_REPARSE_POINT,
-                        nullptr, 0);
+    return dir.Release();
 }
 
 // Writes the result file atomically: a new temp file, then a rename over the old one.
@@ -386,10 +408,19 @@ bool WriteResultFile(HANDLE dir, const std::string& json) {
         rename->RootDirectory = dir;
         rename->FileNameLength = static_cast<ULONG>(target.size() * sizeof(WCHAR));
         memcpy(rename->FileName, target.data(), rename->FileNameLength);
-        IO_STATUS_BLOCK iosb{};
-        ok = NT_SUCCESS(NtSetInformationFile(file.Get(), &iosb, rename,
-                                             static_cast<ULONG>(buf.size()),
-                                             FileRenameInformation));
+        // The mod polls the result file and holds it open for a moment each time; a
+        // rename over a file that is open fails until it is closed again, so retry briefly.
+        for (int attempt = 1;; ++attempt) {
+            IO_STATUS_BLOCK iosb{};
+            NTSTATUS status = NtSetInformationFile(file.Get(), &iosb, rename,
+                                                   static_cast<ULONG>(buf.size()),
+                                                   FileRenameInformation);
+            ok = NT_SUCCESS(status);
+            if (ok || attempt == kRenameAttempts ||
+                (status != kStatusAccessDenied && status != kStatusSharingViolation))
+                break;
+            Sleep(kRenameRetryMs);
+        }
     }
     if (!ok) {
         FILE_DISPOSITION_INFO disposition{};
@@ -891,18 +922,19 @@ int RunKill(const std::vector<KillTarget>& targets, const std::string& id, HANDL
 }
 
 // ---------------------------------------------------------------------------------------
-// Task requests: "v<n> clean <mask> <id>" or "v<n> kill <id> <targets>".
-// Task Scheduler substitutes the request into the command line unquoted, so it arrives
-// either as four arguments or, when quoted, as one argument holding four fields.
+// Requests: "v<n> clean <mask> <id>" through the task, "v<n> kill <id> <targets>" through
+// a UAC prompt. Task Scheduler substitutes the request into the command line unquoted, so
+// it arrives either as four arguments or, when quoted, as one argument holding four fields.
+// Each entry accepts its own verb only: ending a program the user's medium-integrity
+// processes cannot end themselves takes the user's consent, never just a start of the task.
 
-int RunRequest(const std::vector<std::wstring>& fields) {
+int RunRequest(const std::vector<std::wstring>& fields, PCWSTR allowedVerb) {
     if (fields.size() != 4) return kExitBadArgs;
     unsigned long long version = 0;
     if (!ParseVersion(fields[0], &version)) return kExitBadArgs;
     const std::wstring& verb = fields[1];
+    if (verb != allowedVerb) return kExitBadArgs;
     bool isClean = verb == L"clean";
-    bool isKill = verb == L"kill";
-    if (!isClean && !isKill) return kExitBadArgs;
 
     std::string id;
     bool idOk = ParseId(isClean ? fields[3] : fields[2], &id);
@@ -1002,8 +1034,8 @@ bool RegisterTask(const std::wstring& exePath, const std::wstring& sid) {
     if (FAILED(service->NewTask(0, task.Put()))) return false;
 
     Bstr author(L"Bloom Memory Clean");
-    Bstr description(L"Memory Clean add-on for Bloom: cleans memory areas or ends chosen "
-                     L"processes when the add-on asks.");
+    Bstr description(L"Memory Clean add-on for Bloom: cleans memory areas when the add-on "
+                     L"asks.");
     ComRef<IRegistrationInfo> info;
     if (SUCCEEDED(task->get_RegistrationInfo(info.Put()))) {
         info->put_Author(author.Get());
@@ -1161,10 +1193,13 @@ int RunUninstall() {
 }
 
 // The task always runs "--run $(Arg0)", so whatever a caller of the task passes lands
-// after "--run" and can only be a request, never "--install" or "--uninstall".
+// after "--run" and can only be a clean request, never "--install", "--uninstall" or
+// "--ask". "--ask" runs elevated only when started through a UAC prompt the user accepts.
 int Dispatch(int argc, PWSTR* argv) {
     if (argc == 2 && wcscmp(argv[1], L"--install") == 0) return RunInstall();
     if (argc == 2 && wcscmp(argv[1], L"--uninstall") == 0) return RunUninstall();
+    if (argc == 6 && wcscmp(argv[1], L"--ask") == 0)
+        return RunRequest({argv[2], argv[3], argv[4], argv[5]}, L"kill");
     if (argc < 2 || wcscmp(argv[1], L"--run") != 0) return kExitBadArgs;
 
     std::vector<std::wstring> fields;
@@ -1175,7 +1210,7 @@ int Dispatch(int argc, PWSTR* argv) {
     } else {
         return kExitBadArgs;
     }
-    return RunRequest(fields);
+    return RunRequest(fields, L"clean");
 }
 
 }  // namespace

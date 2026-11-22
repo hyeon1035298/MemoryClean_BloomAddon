@@ -260,7 +260,21 @@ void LoadPrefs() {
     Prefs p;
     g_prefsStamp = PrefsStamp();  // before the read: a write in between shows as a change
     bool older = true;
-    if (auto o = ParseObject(ReadText(DataDir() + L"\\" + kPrefsFile))) {
+    std::wstring path = DataDir() + L"\\" + kPrefsFile;
+    auto text = ReadText(path);
+    // Only a missing file gets the defaults written. A file that is there but cannot be read
+    // just now (another writer holds it) or does not parse keeps what is in memory and on
+    // disk, so the user's list is never replaced by the defaults.
+    if (!text) {
+        DWORD error = GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES ? GetLastError() : ERROR_SUCCESS;
+        if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND) {
+            g_prefsStamp = 0;  // the prefs check a second later reads it again
+            return;
+        }
+    }
+    auto parsed = ParseObject(text);
+    if (text && !parsed) return;  // read again once the file changes
+    if (auto& o = parsed) {
         auto& obj = *o;
         p.icon = IconStyle(std::clamp(int(obj.GetNamedNumber(L"icon", 1)), 0, 2));
         p.show = Show(std::clamp(int(obj.GetNamedNumber(L"show", 0)), 0, 2));
@@ -531,11 +545,15 @@ wux::FrameworkElement TaskbarElement(HWND hwnd) {
         if (host[1]) std__Ref_count_base__Decref_Original(host[1]);
         return nullptr;
     }
-    // 48:83EC 28 | sub rsp,28 ; 48:83C1 48 | add rcx,48 <- the element's offset in TaskbarHost
-    size_t offset = 0x10;
+    // 48:83EC 28 | sub rsp,28 ; 48:83C1 48 | add rcx,48 <- the element's offset in TaskbarHost.
+    // Another prologue means another layout: no element rather than a guessed field.
     const BYTE* b = (const BYTE*)TaskbarHost_FrameHeight_Original;
-    if (b[0] == 0x48 && b[1] == 0x83 && b[2] == 0xEC && b[4] == 0x48 && b[5] == 0x83 && b[6] == 0xC1 && b[7] <= 0x7F)
-        offset = b[7];
+    if (!(b[0] == 0x48 && b[1] == 0x83 && b[2] == 0xEC && b[4] == 0x48 && b[5] == 0x83 && b[6] == 0xC1 &&
+          b[7] <= 0x7F)) {
+        std__Ref_count_base__Decref_Original(host[1]);
+        return nullptr;
+    }
+    size_t offset = b[7];
     wux::FrameworkElement element{nullptr};
     winrt::copy_from_abi(element, *(void**)((BYTE*)host[0] + offset));
     std__Ref_count_base__Decref_Original(host[1]);
@@ -855,6 +873,21 @@ struct HelperResult {
     int killed = 0;
 };
 
+// Worker thread. The helper's result for `id`, or false while the file holds none.
+bool ReadHelperResult(const std::wstring& id, HelperResult& result) {
+    auto o = ParseObject(ReadText(DataDir() + L"\\" + kResultFile, 64 * 1024));
+    if (!o || o->GetNamedString(L"id", L"") != id) return false;
+    result.ran = true;
+    result.ok = o->GetNamedBoolean(L"ok", false);
+    result.error = o->GetNamedString(L"error", L"");
+    result.killed = int(o->GetNamedNumber(L"killed", 0));
+    if (auto list = o->TryLookup(L"failed"); list && list.ValueType() == wdj::JsonValueType::Array)
+        for (auto v : list.GetArray())
+            if (v.ValueType() == wdj::JsonValueType::String) result.failed.push_back(std::wstring(v.GetString()));
+    if (result.error == L"protocol") g_helper = HelperState::kOld;
+    return true;
+}
+
 // Worker thread. Runs the task with one argument and waits for its result file.
 HelperResult RunHelper(const std::wstring& arg, const std::wstring& id) {
     HelperResult result;
@@ -873,33 +906,60 @@ HelperResult RunHelper(const std::wstring& arg, const std::wstring& id) {
         Wh_Log(L"helper task did not start: %08X", hr);
         return result;
     }
-    std::wstring path = DataDir() + L"\\" + kResultFile;
     for (int i = 0; i < 600 && !g_unloading; i++) {  // a minute
         Sleep(100);
-        auto o = ParseObject(ReadText(path, 64 * 1024));
-        if (!o || o->GetNamedString(L"id", L"") != id) {
-            // Ended without a result (refused its arguments, or no rights): stop waiting.
-            TASK_STATE state{};
-            if (i > 20 && SUCCEEDED(task->get_State(&state)) && state != TASK_STATE_RUNNING &&
-                state != TASK_STATE_QUEUED) {
-                LONG code = 0;
-                task->get_LastTaskResult(&code);
-                Wh_Log(L"helper ended without a result: %d", code);
-                if (code == kExitProtocol) g_helper = HelperState::kOld;
-                return result;
-            }
-            continue;
+        if (ReadHelperResult(id, result)) return result;
+        // Ended without a result (refused its arguments, or no rights): stop waiting.
+        TASK_STATE state{};
+        if (i > 20 && SUCCEEDED(task->get_State(&state)) && state != TASK_STATE_RUNNING &&
+            state != TASK_STATE_QUEUED) {
+            LONG code = 0;
+            task->get_LastTaskResult(&code);
+            Wh_Log(L"helper ended without a result: %d", code);
+            if (code == kExitProtocol) g_helper = HelperState::kOld;
+            return result;
         }
-        result.ran = true;
-        result.ok = o->GetNamedBoolean(L"ok", false);
-        result.error = o->GetNamedString(L"error", L"");
-        result.killed = int(o->GetNamedNumber(L"killed", 0));
-        if (auto list = o->TryLookup(L"failed"); list && list.ValueType() == wdj::JsonValueType::Array)
-            for (auto v : list.GetArray())
-                if (v.ValueType() == wdj::JsonValueType::String) result.failed.push_back(std::wstring(v.GetString()));
-        if (result.error == L"protocol") g_helper = HelperState::kOld;
+    }
+    return result;
+}
+
+// Worker thread. Ends programs through the installed helper's "--ask" entry, started with
+// "runas": the UAC prompt is the user's consent to end what explorer itself cannot. The
+// task would need none, so it no longer takes this request. *cancelled: the prompt was
+// declined.
+HelperResult AskHelper(const std::wstring& arg, const std::wstring& id, HWND owner, bool* cancelled) {
+    HelperResult result;
+    *cancelled = false;
+    std::wstring exe = InstalledHelper();
+    if (GetFileAttributesW(exe.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        g_helper = HelperState::kMissing;
         return result;
     }
+    std::wstring params = L"--ask " + arg;
+    SHELLEXECUTEINFOW info{sizeof(info)};
+    info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
+    info.hwnd = owner;
+    info.lpVerb = L"runas";
+    info.lpFile = exe.c_str();
+    info.lpParameters = params.c_str();
+    info.nShow = SW_HIDE;
+    if (!ShellExecuteExW(&info) || !info.hProcess) {
+        DWORD error = GetLastError();
+        *cancelled = error == ERROR_CANCELLED;
+        Wh_Log(L"helper --ask not started: %u", error);
+        return result;
+    }
+    // Short waits, so an unload is not held up by a helper still ending programs.
+    for (int i = 0; i < 1200 && !g_unloading; i++)  // two minutes
+        if (WaitForSingleObject(info.hProcess, 100) != WAIT_TIMEOUT) break;
+    DWORD code = STILL_ACTIVE;
+    GetExitCodeProcess(info.hProcess, &code);
+    CloseHandle(info.hProcess);
+    if (code == STILL_ACTIVE || g_unloading) return result;
+    if (ReadHelperResult(id, result)) return result;
+    Wh_Log(L"helper ended without a result: %u", code);
+    // A helper installed before "--ask" existed refuses it as unknown arguments.
+    if (code == DWORD(kExitProtocol) || code == DWORD(kExitBadArgs)) g_helper = HelperState::kOld;
     return result;
 }
 
@@ -930,7 +990,7 @@ bool RunElevated(PCWSTR verbArg) {
 
 std::atomic<bool> g_cleaning;
 void OnCleaned(uint64_t freed, bool helperUsed, bool ok);  // taskbar thread
-void OnKilled(const std::wstring& name, int killed, int left, int blocked, uint64_t freed);
+void OnKilled(const std::wstring& name, int killed, int left, int blocked, uint64_t freed, bool cancelled);
 
 // Without the helper: the working sets of this user's programs this process may trim.
 void TrimOwnWorkingSets(const std::vector<std::wstring>& exclude) {
@@ -974,9 +1034,10 @@ struct KillTarget {
 
 // "Close first": the windows get WM_CLOSE, then what is still running after 3 s ends,
 // unless it shows a window of its own on top (a "save changes?" question).
-void StartKill(const std::wstring& name, std::vector<KillTarget> targets) {
+// owner: the window a UAC prompt belongs to, the taskbar the add-on's window opened from.
+void StartKill(const std::wstring& name, std::vector<KillTarget> targets, HWND owner) {
     bool helper = g_helper == HelperState::kReady;
-    Worker([name, targets, helper] {
+    Worker([name, targets, helper, owner] {
         struct Open {
             KillTarget t;
             HANDLE h;
@@ -1019,6 +1080,8 @@ void StartKill(const std::wstring& name, std::vector<KillTarget> targets) {
         int killed = 0, blocked = 0;
         uint64_t freed = 0;
         std::wstring adminArg;
+        size_t adminCount = 0;  // at most kMaxKillTargets: more would be refused as bad arguments,
+                                // which reads as a helper too old for "--ask"
         for (auto& o : open) {
             if (WaitForSingleObject(o.h, 0) == WAIT_OBJECT_0) {
                 killed++;
@@ -1031,17 +1094,15 @@ void StartKill(const std::wstring& name, std::vector<KillTarget> targets) {
                     freed += o.t.privateWs;
                 }
                 CloseHandle(t);
-            } else if (GetLastError() == ERROR_ACCESS_DENIED) {
+            } else if (GetLastError() == ERROR_ACCESS_DENIED && adminCount < kMaxKillTargets) {
+                adminCount++;
                 adminArg += Format(L"%s%lu:%016llx", adminArg.empty() ? L"" : L",", o.t.pid, o.t.created);
             }
         }
+        bool cancelled = false;
         if (!adminArg.empty() && helper) {
             std::wstring id = NewId();
-            auto r = RunHelper(Format(L"v%d kill %s ", kHelperProtocol, id.c_str()) + adminArg, id);
-            for (auto& o : open)
-                if (WaitForSingleObject(o.h, 0) == WAIT_OBJECT_0 && r.ran) {
-                    // counted once: only those not counted above
-                }
+            auto r = AskHelper(Format(L"v%d kill %s ", kHelperProtocol, id.c_str()) + adminArg, id, owner, &cancelled);
             killed += r.killed;
         }
         int left = 0;
@@ -1049,7 +1110,7 @@ void StartKill(const std::wstring& name, std::vector<KillTarget> targets) {
             if (WaitForSingleObject(o.h, 0) != WAIT_OBJECT_0) left++;
             CloseHandle(o.h);
         }
-        Post([name, killed, left, blocked, freed] { OnKilled(name, killed, left, blocked, freed); });
+        Post([name, killed, left, blocked, freed, cancelled] { OnKilled(name, killed, left, blocked, freed, cancelled); });
     });
 }
 
@@ -2296,10 +2357,17 @@ void PaintRow(Row& r) {
     r.yesText.Text(r.targets.size() > 1 ? T(L"모두 끝내기", L"End all") : T(L"끝내기", L"End"));
 }
 
+// A row's handlers outlive the row (they stay held until the window closes, while rows of
+// ended programs go at the next refresh), so they look their row up by key when they run.
+Row* FindRow(const std::wstring& key) {
+    if (!g_panel) return nullptr;
+    auto it = g_panel->rows.find(key);
+    return it == g_panel->rows.end() ? nullptr : it->second.get();
+}
+
 std::unique_ptr<Row> BuildRow(const std::wstring& key, const std::wstring& name) {
     const Palette& c = *g_panel->c;
     auto r = std::make_unique<Row>();
-    Row* raw = r.get();
     r->key = key;
     r->name = name;
     r->root = wuxc::Border();
@@ -2332,9 +2400,11 @@ std::unique_ptr<Row> BuildRow(const std::wstring& key, const std::wstring& name)
     r->memText.HorizontalAlignment(wux::HorizontalAlignment::Right);
     r->line.Children().Append(InColumn(r->memText, 3));
 
-    r->kill = MakeButton(Kind::kSolid, kGlyphPower, T(L"끝내기", L"End"), true, [raw] {
-        raw->confirm = true;
-        PaintRow(*raw);
+    r->kill = MakeButton(Kind::kSolid, kGlyphPower, T(L"끝내기", L"End"), true, [key] {
+        if (Row* row = FindRow(key)) {
+            row->confirm = true;
+            PaintRow(*row);
+        }
     });
     r->kill.root.HorizontalAlignment(wux::HorizontalAlignment::Right);
     r->kill.root.VerticalAlignment(wux::VerticalAlignment::Center);
@@ -2346,13 +2416,17 @@ std::unique_ptr<Row> BuildRow(const std::wstring& key, const std::wstring& name)
     r->line.Children().Append(InColumn(r->lock, 3));
     OnHover(
         r->line,
-        [raw] {
-            raw->hover = true;
-            PaintRow(*raw);
+        [key] {
+            if (Row* row = FindRow(key)) {
+                row->hover = true;
+                PaintRow(*row);
+            }
         },
-        [raw] {
-            raw->hover = false;
-            PaintRow(*raw);
+        [key] {
+            if (Row* row = FindRow(key)) {
+                row->hover = false;
+                PaintRow(*row);
+            }
         });
 
     // The question: cancel has the default look; ending cannot be undone, so it is red.
@@ -2374,15 +2448,19 @@ std::unique_ptr<Row> BuildRow(const std::wstring& key, const std::wstring& name)
     askStack.Children().Append(question);
     auto buttons = HStack(6);
     buttons.HorizontalAlignment(wux::HorizontalAlignment::Right);
-    auto no = MakeButton(Kind::kOutline, nullptr, T(L"취소", L"Cancel"), true, [raw] {
-        raw->confirm = false;
-        PaintRow(*raw);
+    auto no = MakeButton(Kind::kOutline, nullptr, T(L"취소", L"Cancel"), true, [key] {
+        if (Row* row = FindRow(key)) {
+            row->confirm = false;
+            PaintRow(*row);
+        }
     });
-    auto yes = MakeButton(Kind::kDanger, nullptr, T(L"끝내기", L"End"), true, [raw] {
-        raw->confirm = false;
-        raw->busy = true;
-        PaintRow(*raw);
-        StartKill(raw->name, raw->targets);
+    auto yes = MakeButton(Kind::kDanger, nullptr, T(L"끝내기", L"End"), true, [key] {
+        Row* row = FindRow(key);
+        if (!row) return;
+        row->confirm = false;
+        row->busy = true;
+        PaintRow(*row);
+        StartKill(row->name, row->targets, g_panel->taskbar);
     });
     r->yesText = yes.label;
     buttons.Children().Append(no.root);
@@ -3203,19 +3281,19 @@ void OnCleaned(uint64_t freed, bool helperUsed, bool ok) {
     RefreshClean();
 }
 
-void OnKilled(const std::wstring& name, int killed, int left, int blocked, uint64_t freed) {
+void OnKilled(const std::wstring& name, int killed, int left, int blocked, uint64_t freed, bool cancelled) {
     if (blocked)
         g_toastText = Format(T(L"%s: 저장 확인 창이 떠 있어 닫지 않았습니다", L"%s asks a question on screen, so it was left open"),
+                             name.c_str());
+    else if (left && cancelled)
+        g_toastText = Format(T(L"%s: 관리자 확인이 취소되어 끝내지 않았습니다", L"%s was not ended: the administrator prompt was cancelled"),
                              name.c_str());
     else if (left)
         g_toastText = Format(T(L"%s: %d개를 끝내지 못했습니다 (관리자 도우미 필요)", L"%s: %d could not be ended (needs the admin helper)"),
                              name.c_str(), left);
     else
-        g_toastText = Format(T(L"%s %d개를 끝냈습니다 · %s 돌아옴", L"Ended %d of %s · %s back"), name.c_str(), killed,
+        g_toastText = Format(T(L"%s %d개를 끝냈습니다 · %s 돌아옴", L"Ended %s (%d) · %s back"), name.c_str(), killed,
                              Bytes(freed).c_str());
-    if (!g_korean)
-        g_toastText = blocked || left ? g_toastText
-                                      : Format(L"Ended %s (%d) · %s back", name.c_str(), killed, Bytes(freed).c_str());
     if (g_panel)
         for (auto& [key, row] : g_panel->rows)
             if (row->name == name) row->busy = false;

@@ -9,7 +9,8 @@ namespace memclean {
 
 // The helper refuses a request of another protocol (exit code kExitProtocol); the mod
 // then offers to install the helper again.
-constexpr int kHelperProtocol = 1;
+// 2: "kill" moved from the task ("--run") to its own entry behind a UAC prompt ("--ask").
+constexpr int kHelperProtocol = 2;
 
 // Where the helper lives once installed: under Program Files, so only an administrator
 // can replace the file the elevated task runs.
@@ -38,6 +39,9 @@ enum Area : unsigned {
 };
 // The defaults: everything but the two lists whose clearing can stall the PC a moment.
 constexpr unsigned kDefaultAreas = kAllAreas & ~(kStandby | kModified);
+
+// The most processes one kill request may name; the helper refuses more as bad arguments.
+constexpr size_t kMaxKillTargets = 256;
 
 // Helper exit codes.
 constexpr int kExitOk = 0;

@@ -37,6 +37,7 @@ Without administrator rights the add-on trims the working sets of your own progr
 
 - Installing it asks once for administrator rights (one UAC prompt). It copies `MemoryCleanHelper.exe` to `%ProgramFiles%\Bloom Add-ons\MemoryClean\` and registers a scheduled task under `\Bloom\` that runs it with the highest privileges, only when the add-on asks.
 - It runs for one request (clean these areas, or end these programs) and exits. It writes its result to `%LOCALAPPDATA%\Bloom\addons\memory-clean\helper-result.json`.
+- Cleaning goes through the task with no prompt. Ending a program that runs as administrator asks each time (one UAC prompt per End); the task never ends programs, so no other program of yours can use it to end them without you.
 - Uninstalling it (one more UAC prompt) removes the task and, when no other user still has one, the folder.
 
 ## Settings
