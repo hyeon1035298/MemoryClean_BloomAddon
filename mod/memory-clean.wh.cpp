@@ -2141,10 +2141,10 @@ std::wstring BaseName(const std::wstring& file) {
 std::wstring Ago(uint64_t at) {
     uint64_t now = NowFiletime();
     uint64_t minutes = now > at ? (now - at) / (10'000'000ull * 60) : 0;
-    if (minutes < 1) return T(L"방금", L"just now");
-    if (minutes < 60) return Format(T(L"%llu분 전", L"%llu min ago"), minutes);
-    if (minutes < 60 * 24) return Format(T(L"%llu시간 전", L"%llu h ago"), minutes / 60);
-    return Format(T(L"%llu일 전", L"%llu d ago"), minutes / (60 * 24));
+    if (minutes < 1) return T(L"방금", L"Just now");
+    if (minutes < 60) return Format(T(L"%llu분 전", L"%llum ago"), minutes);
+    if (minutes < 60 * 24) return Format(T(L"%llu시간 전", L"%lluh ago"), minutes / 60);
+    return Format(T(L"%llu일 전", L"%llud ago"), minutes / (60 * 24));
 }
 
 void InstallHelper(bool remove) {
@@ -2192,7 +2192,7 @@ wux::UIElement BuildClean() {
         box.Children().Append(bar.track);
         return box;
     };
-    auto metrics = PanelOf({metric(T(L"커밋 (페이지 파일 포함)", L"Committed (with page file)"), p.commitText, p.commitBar),
+    auto metrics = PanelOf({metric(T(L"커밋 (페이지 파일 포함)", L"Committed (incl. page file)"), p.commitText, p.commitBar),
                             metric(T(L"시스템 캐시", L"System cache"), p.cacheText, p.cacheBar)});
     metrics.Margin({0, 14, 0, 0});
     page.Children().Append(metrics);
@@ -2211,7 +2211,7 @@ wux::UIElement BuildClean() {
     p.notice.Child(noticeRow);
     page.Children().Append(p.notice);
 
-    p.cleanButton = MakeButton(Kind::kSolid, nullptr, T(L"지금 정리", L"Clean now"), false, [] {
+    p.cleanButton = MakeButton(Kind::kSolid, nullptr, T(L"지금 정리", L"Clean Now"), false, [] {
         if (g_cleaning) return;
         StartClean(g_prefs.areas);
         RefreshClean();
@@ -2252,8 +2252,8 @@ wux::UIElement BuildClean() {
         OnClick(row, [] { ShowPage(Page::kSettings); });
         linkStack.Children().Append(row);
     };
-    link(kGlyphAuto, T(L"자동 정리", L"Automatic cleaning"), p.autoEnd);
-    link(kGlyphBlock, T(L"예외 프로그램", L"Programs left alone"), p.exclEnd);
+    link(kGlyphAuto, T(L"자동 정리", L"Auto cleanup"), p.autoEnd);
+    link(kGlyphBlock, T(L"예외 프로그램", L"Excluded programs"), p.exclEnd);
     links.Child(linkStack);
     page.Children().Append(links);
     return page;
@@ -2292,20 +2292,20 @@ void RefreshClean() {
     p.notice.Visibility(g_helper == HelperState::kMissing || g_helper == HelperState::kOld ? wux::Visibility::Visible
                                                                                             : wux::Visibility::Collapsed);
     p.noticeText.Text(g_helper == HelperState::kOld
-                          ? T(L"관리자 도우미를 다시 설치해야 합니다.", L"The admin helper needs installing again.")
+                          ? T(L"관리자 도우미를 다시 설치해야 합니다.", L"The administrator helper needs to be reinstalled.")
                           : T(L"관리자 도우미가 없어 내 프로그램의 작업 집합만 비웁니다.",
-                              L"Without the admin helper only your programs' working sets are trimmed."));
-    p.cleanButton.label.Text(g_cleaning ? T(L"정리 중…", L"Cleaning…") : T(L"지금 정리", L"Clean now"));
+                              L"Without the administrator helper, only working sets of your own apps are cleaned."));
+    p.cleanButton.label.Text(g_cleaning ? T(L"정리 중…", L"Compacting…") : T(L"지금 정리", L"Clean Now"));
     p.cleanButton.root.Opacity(g_cleaning ? 0.6 : 1.0);
     bool cleaned = g_prefs.lastCleanAt != 0;
     p.resultMark.Visibility(cleaned ? wux::Visibility::Visible : wux::Visibility::Collapsed);
-    p.result.Text(cleaned ? Format(T(L"%s 정리 · %s 비움", L"Cleaned %s · %s freed"), Ago(g_prefs.lastCleanAt).c_str(),
+    p.result.Text(cleaned ? Format(T(L"%s 정리 · %s 비움", L"Cleaned %s · Freed %s"), Ago(g_prefs.lastCleanAt).c_str(),
                                    Bytes(g_prefs.lastFreed).c_str())
                           : std::wstring(T(L"아직 정리하지 않음", L"Not cleaned yet")));
     if (g_prefs.autoPercentOn)
-        p.autoEnd.Text(Format(T(L"%d %% 넘으면", L"Above %d%%"), g_prefs.autoPercent));
+        p.autoEnd.Text(Format(T(L"%d %% 넘으면", L"Over %d%%"), g_prefs.autoPercent));
     else if (g_prefs.autoIntervalOn)
-        p.autoEnd.Text(Format(T(L"%d분마다", L"Every %d min"), g_prefs.autoMinutes));
+        p.autoEnd.Text(Format(T(L"%d분마다", L"Every %dm"), g_prefs.autoMinutes));
     else
         p.autoEnd.Text(T(L"꺼짐", L"Off"));
     p.exclEnd.Text(g_prefs.exclude.empty() ? std::wstring(T(L"없음", L"None"))
@@ -2341,7 +2341,7 @@ void PaintRow(Row& r) {
         b.Child(row);
         r.badges.Children().Append(b);
     };
-    if (r.targets.size() > 1) badge(Format(T(L"%d개", L"×%d"), int(r.targets.size())), false);
+    if (r.targets.size() > 1) badge(Format(T(L"%d개", L"%d"), int(r.targets.size())), false);
     if (r.hung) badge(T(L"응답 없음", L"Not responding"), true);
     if (r.admin) r.badges.Children().Append(Glyph(kGlyphShield, 11, c.faint));
     bool hot = r.cpu >= 30;
@@ -2441,8 +2441,8 @@ std::unique_ptr<Row> BuildRow(const std::wstring& key, const std::wstring& name)
     r->askText = Text(L"", 13, c.fg);
     words.Children().Append(r->askText);
     words.Children().Append(Wrapped(T(L"창을 먼저 닫고, 3초 뒤에도 남은 것만 끝냅니다. 저장을 묻는 창이 뜨면 두고 알려 드립니다.",
-                                      L"Its windows close first; whatever still runs after 3 s ends. A program asking "
-                                      L"to save is left open."),
+                                      L"Tries closing windows first and force-ends only what remains after 3 seconds. If a "
+                                      L"save prompt appears, it is left open and you will be notified."),
                                     12, c.faint));
     question.Children().Append(InColumn(words, 1));
     askStack.Children().Append(question);
@@ -2486,7 +2486,7 @@ wuxc::Border SearchField(const Palette& c, const std::wstring& text, std::functi
     searchRow.Children().Append(Glyph(kGlyphSearch, 12, c.faint));
     wuxc::TextBox box;
     StyleTextBox(box, c);
-    box.PlaceholderText(T(L"찾기", L"Find"));
+    box.PlaceholderText(T(L"찾기", L"Search"));
     box.Text(text);
     Keep(box.TextChanged(winrt::auto_revoke, [box, changed](auto&&, auto&&) {
         if (g_panel) changed(Lower(std::wstring(box.Text())));
@@ -2510,7 +2510,7 @@ wux::UIElement BuildPrograms() {
         g_panel->filter = text;
         RefreshPrograms();
     }));
-    auto sort = MakeSegment({T(L"메모리순", L"Memory"), T(L"CPU순", L"CPU")}, false, 24, g_prefs.sortCpu ? 1 : 0,
+    auto sort = MakeSegment({T(L"메모리순", L"By memory"), T(L"CPU순", L"By CPU")}, false, 24, g_prefs.sortCpu ? 1 : 0,
                             [](int i) {
                                 g_prefs.sortCpu = i == 1;
                                 SavePrefs();
@@ -2521,7 +2521,7 @@ wux::UIElement BuildPrograms() {
 
     auto cols = Columns({-1, kColCpu, kColMem}, 8);
     cols.Padding({42, 10, 8, 4});
-    cols.Children().Append(Text(T(L"프로그램", L"Program"), 11, c.faint));
+    cols.Children().Append(Text(T(L"프로그램", L"Programs"), 11, c.faint));
     p.colCpu = Text(L"CPU", 11, c.faint);
     p.colCpu.HorizontalAlignment(wux::HorizontalAlignment::Right);
     p.colMem = Text(T(L"메모리", L"Memory"), 11, c.faint);
@@ -2761,7 +2761,7 @@ void RefreshPrograms() {
     p.colCpu.FontWeight(Weight(cpu ? 500 : 400));
     p.colMem.Foreground(Brush(cpu ? c.faint : c.fg));
     p.colMem.FontWeight(Weight(cpu ? 400 : 500));
-    p.foot.Text(Format(T(L"실행 중 %d개 · 커밋 %s / %s GB", L"%d running · committed %s / %s GB"), int(procs.size()),
+    p.foot.Text(Format(T(L"실행 중 %d개 · 커밋 %s / %s GB", L"%d running · Committed %s / %s GB"), int(procs.size()),
                        Gb(g_mem.commit).c_str(), Gb(g_mem.commitLimit).c_str()));
     p.toastBox.Visibility(g_toastText.empty() ? wux::Visibility::Collapsed : wux::Visibility::Visible);
     p.toast.Text(g_toastText);
@@ -2785,8 +2785,8 @@ wux::UIElement BuildSettings() {
     const Palette& c = *p.c;
     auto page = VStack(0);
 
-    page.Children().Append(SectionHead(T(L"작업표시줄 아이콘", L"Taskbar icon"), T(L"우클릭으로 전환", L"Right-click switches")));
-    auto shows = MakeSegment({T(L"메모리", L"Memory"), L"CPU", T(L"메모리+CPU", L"Memory+CPU")}, true, 28,
+    page.Children().Append(SectionHead(T(L"작업표시줄 아이콘", L"Taskbar icon"), T(L"우클릭으로 전환", L"Right-click to switch")));
+    auto shows = MakeSegment({T(L"메모리", L"Memory"), L"CPU", T(L"메모리+CPU", L"Memory + CPU")}, true, 28,
                              int(g_prefs.show), [](int i) {
                                  g_prefs.show = Show(i);
                                  SavePrefs();
@@ -2820,7 +2820,7 @@ wux::UIElement BuildSettings() {
     }
     page.Children().Append(styles);
 
-    page.Children().Append(SectionHead(T(L"정리할 곳", L"What to clean"), T(L"지금 정리와 자동 정리", L"Now and automatic")));
+    page.Children().Append(SectionHead(T(L"정리할 곳", L"Areas to Clean"), T(L"지금 정리와 자동 정리", L"Manual & auto cleanup")));
     auto area = [](unsigned bit, PCWSTR ko, PCWSTR en) {
         return MakeKey(T(ko, en), (g_prefs.areas & bit) != 0, [bit](bool on) {
             g_prefs.areas = on ? g_prefs.areas | bit : g_prefs.areas & ~bit;
@@ -2838,14 +2838,14 @@ wux::UIElement BuildSettings() {
     keyRow({area(kWorkingSets, L"작업 집합", L"Working sets"),
             area(kSystemFileCache, L"시스템 파일 캐시", L"System file cache")},
            0);
-    keyRow({area(kLowPriorityStandby, L"낮은 우선순위 대기", L"Low-priority standby"),
-            area(kCombine, L"메모리 합치기", L"Combine memory")},
+    keyRow({area(kLowPriorityStandby, L"낮은 우선순위 대기", L"Low-priority standby list"),
+            area(kCombine, L"메모리 합치기", L"Combine memory pages")},
            6);
     keyRow({area(kRegistryCache, L"레지스트리 캐시", L"Registry cache")}, 6);
-    page.Children().Append(Help(T(L"잠깐 멈칫할 수 있음 · 자동 정리에서는 빠짐", L"May stall a moment · never in automatic cleaning")));
-    keyRow({area(kStandby, L"대기 목록 전체", L"Whole standby list"), area(kModified, L"수정된 페이지", L"Modified pages")}, 6);
+    page.Children().Append(Help(T(L"잠깐 멈칫할 수 있음 · 자동 정리에서는 빠짐", L"May cause a brief freeze · Skipped in auto cleanup")));
+    keyRow({area(kStandby, L"대기 목록 전체", L"Full standby list"), area(kModified, L"수정된 페이지", L"Modified page list")}, 6);
 
-    page.Children().Append(SectionHead(T(L"자동 정리", L"Automatic cleaning")));
+    page.Children().Append(SectionHead(T(L"자동 정리", L"Auto cleanup")));
     auto percent = NumberBox(g_prefs.autoPercent, 50, 99, L"%", [](int v) {
         g_prefs.autoPercent = v;
         SavePrefs();
@@ -2855,13 +2855,13 @@ wux::UIElement BuildSettings() {
         SavePrefs();
     });
     page.Children().Append(PanelOf({
-        OptionRow(nullptr, T(L"사용률이 넘으면", L"When use passes"), T(L"30초에 한 번까지", L"At most every 30 s"),
+        OptionRow(nullptr, T(L"사용률이 넘으면", L"When usage exceeds"), T(L"30초에 한 번까지", L"At most once every 30 seconds"),
                   {percent, MakeSwitch(g_prefs.autoPercentOn,
                                        [](bool on) {
                                            g_prefs.autoPercentOn = on;
                                            SavePrefs();
                                        })}),
-        OptionRow(nullptr, T(L"일정한 간격마다", L"Every so often"), L"",
+        OptionRow(nullptr, T(L"일정한 간격마다", L"At regular intervals"), L"",
                   {minutes, MakeSwitch(g_prefs.autoIntervalOn,
                                        [](bool on) {
                                            g_prefs.autoIntervalOn = on;
@@ -2869,7 +2869,7 @@ wux::UIElement BuildSettings() {
                                        })}),
     }));
 
-    page.Children().Append(SectionHead(T(L"예외 프로그램", L"Programs left alone"),
+    page.Children().Append(SectionHead(T(L"예외 프로그램", L"Excluded programs"),
                                        Format(T(L"%d개", L"%d"), int(g_prefs.exclude.size()))));
     if (!g_prefs.exclude.empty()) {
         std::vector<wux::FrameworkElement> rows;
@@ -2934,10 +2934,10 @@ wux::UIElement BuildSettings() {
     OnClick(add, [] { ShowPage(Page::kPick); });
     page.Children().Append(add);
     page.Children().Append(Help(T(L"예외 프로그램은 작업 집합을 비우지 않습니다. 대기 목록과 파일 캐시는 시스템 전체라 예외 없이 비웁니다.",
-                                  L"Programs left alone keep their working sets. The standby list and file cache belong "
-                                  L"to the whole system and are cleared regardless.")));
+                                  L"Excluded programs keep their working sets intact. Standby lists and file caches "
+                                  L"apply system-wide and are always cleaned.")));
 
-    page.Children().Append(SectionHead(T(L"관리자 도우미", L"Admin helper")));
+    page.Children().Append(SectionHead(T(L"관리자 도우미", L"Administrator helper")));
     bool ready = g_helper == HelperState::kReady;
     wux::FrameworkElement lead{nullptr};
     if (ready) {
@@ -2954,10 +2954,10 @@ wux::UIElement BuildSettings() {
     page.Children().Append(PanelOf({OptionRow(
         lead,
         ready ? T(L"설치됨", L"Installed")
-              : g_helper == HelperState::kOld ? T(L"다시 설치 필요", L"Needs installing again") : T(L"없음", L"Not installed"),
-        ready ? T(L"정리할 때만 잠깐 실행되고 끝납니다", L"Runs only while cleaning, then exits")
+              : g_helper == HelperState::kOld ? T(L"다시 설치 필요", L"Reinstall required") : T(L"없음", L"None"),
+        ready ? T(L"정리할 때만 잠깐 실행되고 끝납니다", L"Runs briefly only during cleanup and exits")
               : T(L"정리할 때만 잠깐 실행되고 끝납니다 · 설치할 때 UAC를 한 번 묻습니다",
-                  L"Runs only while cleaning, then exits · installing asks UAC once"),
+                  L"Runs briefly only during cleanup · Prompts for UAC once during installation"),
         {helperButton.root})}));
     return Scrolled(page, 520);
 }
@@ -2973,7 +2973,7 @@ wux::UIElement BuildPicker() {
         std::wstring text;  // lower-case label and file name
     };
     auto entries = std::make_shared<std::vector<Entry>>();
-    auto none = Help(T(L"찾는 프로그램이 없습니다", L"No program matches"));
+    auto none = Help(T(L"찾는 프로그램이 없습니다", L"No matching programs found"));
     none.Visibility(wux::Visibility::Collapsed);
     std::map<std::wstring, std::wstring> names;
     for (auto& proc : Snapshot(p.buffer)) {
@@ -3034,7 +3034,7 @@ wux::UIElement BuildHead(Page page) {
                                 });
         row.Children().Append(tabs.root);
         auto gear = MakeButton(Kind::kGhost, kGlyphSettings, L"", false, [] { ShowPage(Page::kSettings); });
-        wux::Automation::AutomationProperties::SetName(gear.root, T(L"정리 설정", L"Cleaning settings"));
+        wux::Automation::AutomationProperties::SetName(gear.root, T(L"정리 설정", L"Cleaner Settings"));
         gear.root.VerticalAlignment(wux::VerticalAlignment::Center);
         row.Children().Append(InColumn(gear.root, 1));
         return row;
@@ -3046,7 +3046,7 @@ wux::UIElement BuildHead(Page page) {
     back.root.VerticalAlignment(wux::VerticalAlignment::Center);
     row.Children().Append(back.root);
     row.Children().Append(InColumn(
-        Text(pick ? T(L"예외로 둘 프로그램", L"Program to leave alone") : T(L"정리 설정", L"Cleaning settings"), 13, c.fg, 600), 1));
+        Text(pick ? T(L"예외로 둘 프로그램", L"Programs to Exclude") : T(L"정리 설정", L"Cleaner Settings"), 13, c.fg, 600), 1));
     return row;
 }
 
@@ -3283,13 +3283,13 @@ void OnCleaned(uint64_t freed, bool helperUsed, bool ok) {
 
 void OnKilled(const std::wstring& name, int killed, int left, int blocked, uint64_t freed, bool cancelled) {
     if (blocked)
-        g_toastText = Format(T(L"%s: 저장 확인 창이 떠 있어 닫지 않았습니다", L"%s asks a question on screen, so it was left open"),
+        g_toastText = Format(T(L"%s: 저장 확인 창이 떠 있어 닫지 않았습니다", L"%s: Left open because a save prompt is showing"),
                              name.c_str());
     else if (left && cancelled)
-        g_toastText = Format(T(L"%s: 관리자 확인이 취소되어 끝내지 않았습니다", L"%s was not ended: the administrator prompt was cancelled"),
+        g_toastText = Format(T(L"%s: 관리자 확인이 취소되어 끝내지 않았습니다", L"%s: Not ended because administrator confirmation was canceled"),
                              name.c_str());
     else if (left)
-        g_toastText = Format(T(L"%s: %d개를 끝내지 못했습니다 (관리자 도우미 필요)", L"%s: %d could not be ended (needs the admin helper)"),
+        g_toastText = Format(T(L"%s: %d개를 끝내지 못했습니다 (관리자 도우미 필요)", L"%s: Could not end %d (administrator helper required)"),
                              name.c_str(), left);
     else
         g_toastText = Format(T(L"%s %d개를 끝냈습니다 · %s 돌아옴", L"Ended %s (%d) · %s back"), name.c_str(), killed,

@@ -14,7 +14,7 @@
           "options": [
             {
               "value": 0,
-              "name": { "ko": "선", "en": "Line", "ja": "線", "zh": "线条" },
+              "name": { "ko": "선", "en": "Outline", "ja": "線", "zh": "线条" },
               "easy": {
                 "name": { "ko": "선", "en": "Outline", "ja": "線", "zh": "线条" },
                 "picture": {
@@ -35,7 +35,7 @@
               "value": 1,
               "name": { "ko": "채움", "en": "Fill", "ja": "塗り", "zh": "填充" },
               "easy": {
-                "name": { "ko": "채움", "en": "Filled", "ja": "塗り", "zh": "填充" },
+                "name": { "ko": "채움", "en": "Fill", "ja": "塗り", "zh": "填充" },
                 "picture": {
                   "shapes": [
                     { "box": [13.3, 5.9, 28.1, 26.6], "r": 7.2, "corners": "left", "fill": "accent", "alpha": 0.32 },
@@ -53,9 +53,9 @@
             },
             {
               "value": 2,
-              "name": { "ko": "꽉 채움", "en": "Solid", "ja": "べた塗り", "zh": "实心" },
+              "name": { "ko": "꽉 채움", "en": "Solid", "ja": "ベタ塗り", "zh": "实心" },
               "easy": {
-                "name": { "ko": "꽉 채움", "en": "Solid", "ja": "べた塗り", "zh": "实心" },
+                "name": { "ko": "꽉 채움", "en": "Solid", "ja": "ベタ塗り", "zh": "实心" },
                 "picture": {
                   "shapes": [
                     { "box": [13.3, 5.9, 45.4, 26.6], "r": 7.2 },
@@ -71,10 +71,10 @@
               }
             }
           ],
-          "name": { "ko": "작업표시줄 아이콘", "en": "Taskbar icon", "ja": "タスクバーのアイコン", "zh": "任务栏图标" },
+          "name": { "ko": "작업표시줄 아이콘", "en": "Taskbar icon", "ja": "タスクバーアイコン", "zh": "任务栏图标" },
           "easy": {
-            "name": { "ko": "아이콘 모양", "en": "Icon look", "ja": "アイコンの形", "zh": "图标样式" },
-            "about": { "ko": "숫자는 지금 쓰는 양입니다", "en": "The number is what is in use now", "ja": "数字は今使っている量です", "zh": "数字是当前的使用量" }
+            "name": { "ko": "아이콘 모양", "en": "Icon style", "ja": "アイコンのスタイル", "zh": "图标样式" },
+            "about": { "ko": "숫자는 지금 쓰는 양입니다", "en": "The number shows current usage", "ja": "数値は現在の使用率を示します", "zh": "数字表示当前使用率" }
           }
         },
         {
@@ -118,7 +118,7 @@
             },
             {
               "value": 2,
-              "name": { "ko": "메모리+CPU", "en": "Memory+CPU", "ja": "メモリ+CPU", "zh": "内存+CPU" },
+              "name": { "ko": "메모리+CPU", "en": "Memory + CPU", "ja": "メモリ+CPU", "zh": "内存+CPU" },
               "easy": {
                 "name": { "ko": "둘 다", "en": "Both", "ja": "両方", "zh": "两者" },
                 "picture": {
@@ -139,20 +139,20 @@
               }
             }
           ],
-          "name": { "ko": "표시 항목", "en": "Shows", "ja": "表示する項目", "zh": "显示项目" },
+          "name": { "ko": "표시 항목", "en": "Display metric", "ja": "表示項目", "zh": "显示项目" },
           "about": {
             "ko": "아이콘을 우클릭해도 메모리와 CPU가 바뀝니다",
-            "en": "Right-clicking the icon also switches memory and CPU",
+            "en": "Right-clicking the icon also toggles between Memory and CPU",
             "ja": "アイコンを右クリックしてもメモリと CPU が切り替わります",
-            "zh": "右键单击图标也可在内存和 CPU 之间切换"
+            "zh": "右键点击图标也可在内存与 CPU 之间切换"
           },
           "easy": {
-            "name": { "ko": "보일 값", "en": "Value shown", "ja": "表示する値", "zh": "显示的数值" },
+            "name": { "ko": "보일 값", "en": "Value to show", "ja": "表示する値", "zh": "显示数值" },
             "about": {
               "ko": "아이콘을 오른쪽 클릭해도 바뀝니다",
-              "en": "Right-clicking the icon changes it too",
+              "en": "Right-clicking the icon also switches it",
               "ja": "アイコンを右クリックしても切り替わります",
-              "zh": "右键单击图标也可以切换"
+              "zh": "右键点击图标也可切换"
             }
           }
         },
@@ -162,21 +162,21 @@
           "default": 2,
           "min": 1,
           "max": 10,
-          "name": { "ko": "새로 고침 간격(초)", "en": "Refresh interval (s)", "ja": "更新間隔 (s)", "zh": "刷新间隔 (s)" },
+          "name": { "ko": "새로 고침 간격(초)", "en": "Refresh interval (sec)", "ja": "更新間隔 (秒)", "zh": "刷新间隔 (秒)" },
           "about": {
             "ko": "사용률을 다시 읽는 간격입니다",
-            "en": "How often the memory use is read again",
-            "ja": "メモリ使用率を読み直す間隔です",
-            "zh": "重新读取内存使用率的间隔"
+            "en": "How often usage statistics are updated",
+            "ja": "使用率を再取得する間隔です",
+            "zh": "重新读取使用率的时间间隔"
           },
-          "easy": { "name": { "ko": "새로 고침 간격", "en": "Refresh every", "ja": "更新間隔", "zh": "刷新间隔" }, "about": "", "more": true }
+          "easy": { "name": { "ko": "새로 고침 간격", "en": "Refresh interval", "ja": "更新間隔", "zh": "刷新间隔" }, "about": "", "more": true }
         }
       ],
-      "easy": { "name": { "ko": "작업표시줄 아이콘", "en": "Taskbar icon", "ja": "タスクバーのアイコン", "zh": "任务栏图标" } }
+      "easy": { "name": { "ko": "작업표시줄 아이콘", "en": "Taskbar icon", "ja": "タスクバーアイコン", "zh": "任务栏图标" } }
     },
     {
       "id": "clean",
-      "name": { "ko": "정리할 곳", "en": "What to clean", "ja": "解放する場所", "zh": "清理范围" },
+      "name": { "ko": "정리할 곳", "en": "Areas to Clean", "ja": "整理する対象", "zh": "清理项目" },
       "items": [
         {
           "key": "clean.areas",
@@ -188,26 +188,26 @@
           "options": [
             { "value": 1, "name": { "ko": "작업 집합", "en": "Working sets", "ja": "ワーキングセット", "zh": "工作集" } },
             { "value": 2, "name": { "ko": "시스템 파일 캐시", "en": "System file cache", "ja": "システムファイルキャッシュ", "zh": "系统文件缓存" } },
-            { "value": 4, "name": { "ko": "낮은 우선순위 대기", "en": "Low-priority standby", "ja": "低優先度のスタンバイ", "zh": "低优先级备用" } },
-            { "value": 32, "name": { "ko": "메모리 합치기", "en": "Combine memory", "ja": "メモリの結合", "zh": "合并内存" } },
+            { "value": 4, "name": { "ko": "낮은 우선순위 대기", "en": "Low-priority standby list", "ja": "低優先度スタンバイリスト", "zh": "低优先级备用列表" } },
+            { "value": 32, "name": { "ko": "메모리 합치기", "en": "Combine memory pages", "ja": "メモリ結合", "zh": "合并内存页" } },
             { "value": 64, "name": { "ko": "레지스트리 캐시", "en": "Registry cache", "ja": "レジストリキャッシュ", "zh": "注册表缓存" } },
-            { "value": 8, "name": { "ko": "대기 목록 전체", "en": "Whole standby list", "ja": "スタンバイリスト全体", "zh": "整个备用列表" } },
-            { "value": 16, "name": { "ko": "수정된 페이지", "en": "Modified pages", "ja": "変更されたページ", "zh": "已修改页面" } }
+            { "value": 8, "name": { "ko": "대기 목록 전체", "en": "Full standby list", "ja": "スタンバイリスト全体", "zh": "全部备用列表" } },
+            { "value": 16, "name": { "ko": "수정된 페이지", "en": "Modified page list", "ja": "変更済みページ", "zh": "已修改页面" } }
           ],
-          "name": { "ko": "정리할 영역", "en": "Areas to clean", "ja": "解放する領域", "zh": "清理区域" },
+          "name": { "ko": "정리할 영역", "en": "Areas to clean", "ja": "整理する領域", "zh": "清理区域" },
           "about": {
             "ko": "지금 정리와 자동 정리에 씁니다. 대기 목록 전체와 수정된 페이지는 잠깐 멈칫할 수 있어 자동 정리에서는 빠집니다",
-            "en": "Used by cleaning now and automatic cleaning. The whole standby list and modified pages may stall a moment, so automatic cleaning leaves them out.",
-            "ja": "今すぐ解放と自動解放に使います。スタンバイリスト全体と変更されたページは一瞬止まることがあるため、自動解放では除きます。",
-            "zh": "用于立即清理和自动清理。整个备用列表和已修改页面可能会短暂卡顿，因此自动清理不包括它们。"
+            "en": "Used for both manual and auto cleanup. Full standby list and modified pages may cause a brief freeze, so they are skipped during auto cleanup",
+            "ja": "今すぐ整理と自動整理の両方で使われます。スタンバイリスト全体と変更済みページは一瞬重くなることがあるため、自動整理では除外されます",
+            "zh": "用于立即清理与自动清理。全部备用列表和已修改页面可能导致短暂卡顿，因此在自动清理中会跳过"
           }
         }
       ],
-      "easy": { "name": { "ko": "정리", "en": "Cleaning", "ja": "解放", "zh": "清理" } }
+      "easy": { "name": { "ko": "정리", "en": "Clean", "ja": "整理", "zh": "清理" } }
     },
     {
       "id": "auto",
-      "name": { "ko": "자동 정리", "en": "Automatic cleaning", "ja": "自動解放", "zh": "自动清理" },
+      "name": { "ko": "자동 정리", "en": "Auto cleanup", "ja": "自動整理", "zh": "自动清理" },
       "items": [
         {
           "key": "auto.percentOn",
@@ -215,16 +215,16 @@
           "file": "prefs.json",
           "field": "autoPercentOn",
           "default": false,
-          "name": { "ko": "사용률 기준 자동 정리", "en": "Clean above a memory use", "ja": "使用率による自動解放", "zh": "按使用率自动清理" },
+          "name": { "ko": "사용률 기준 자동 정리", "en": "Auto cleanup by usage", "ja": "使用率に基づく自動整理", "zh": "按使用率自动清理" },
           "about": {
             "ko": "사용률이 기준을 넘으면 정리합니다. 30초에 한 번까지입니다",
-            "en": "Cleans when the memory use passes the limit, at most every 30 seconds.",
-            "ja": "使用率が基準を超えると解放します。30 秒に 1 回までです。",
-            "zh": "内存使用率超过阈值时清理，最多每 30 秒一次。"
+            "en": "Cleans memory when usage exceeds the threshold, at most once every 30 seconds",
+            "ja": "使用率が基準を超えると整理します（最短30秒に1回まで）",
+            "zh": "当使用率超过阈值时进行清理，最多每 30 秒一次"
           },
           "easy": {
-            "name": { "ko": "메모리가 많이 차면 정리", "en": "Clean when memory fills up", "ja": "メモリが多く使われたら解放", "zh": "内存占用高时清理" },
-            "about": { "ko": "30초에 한 번까지", "en": "At most once every 30 seconds", "ja": "30 秒に 1 回まで", "zh": "最多每 30 秒一次" },
+            "name": { "ko": "메모리가 많이 차면 정리", "en": "Clean when memory is high", "ja": "メモリ使用量が増えたら整理", "zh": "内存占用较高时清理" },
+            "about": { "ko": "30초에 한 번까지", "en": "At most once every 30 seconds", "ja": "最短30秒に1回まで", "zh": "最多每 30 秒一次" },
             "thumb": {
               "shapes": [
                 { "box": [6, 13, 48, 10], "r": 3, "alpha": 0.18 },
@@ -242,8 +242,8 @@
           "default": 90,
           "min": 50,
           "max": 99,
-          "name": { "ko": "기준 사용률 (%)", "en": "Memory use limit (%)", "ja": "基準の使用率 (%)", "zh": "使用率阈值 (%)" },
-          "easy": { "name": { "ko": "기준", "en": "At", "ja": "基準", "zh": "阈值" }, "when": { "key": "auto.percentOn" } }
+          "name": { "ko": "기준 사용률 (%)", "en": "Usage threshold (%)", "ja": "基準使用率 (%)", "zh": "触发使用率 (%)" },
+          "easy": { "name": { "ko": "기준", "en": "Threshold", "ja": "基準", "zh": "阈值" }, "when": { "key": "auto.percentOn" } }
         },
         {
           "key": "auto.intervalOn",
@@ -251,9 +251,9 @@
           "file": "prefs.json",
           "field": "autoIntervalOn",
           "default": false,
-          "name": { "ko": "일정 간격 자동 정리", "en": "Clean every so often", "ja": "一定間隔の自動解放", "zh": "定时自动清理" },
+          "name": { "ko": "일정 간격 자동 정리", "en": "Auto cleanup on interval", "ja": "一定間隔での自動整理", "zh": "定时自动清理" },
           "easy": {
-            "name": { "ko": "정해진 시간마다 정리", "en": "Clean on a schedule", "ja": "決まった間隔で解放", "zh": "按固定间隔清理" },
+            "name": { "ko": "정해진 시간마다 정리", "en": "Clean on a regular schedule", "ja": "決まった時間ごとに整理", "zh": "按固定时间间隔清理" },
             "about": "",
             "thumb": {
               "shapes": [
@@ -272,9 +272,9 @@
           "default": 30,
           "min": 1,
           "max": 1440,
-          "name": { "ko": "정리 간격(분)", "en": "Interval (min)", "ja": "解放の間隔 (min)", "zh": "清理间隔 (min)" },
+          "name": { "ko": "정리 간격(분)", "en": "Cleanup interval (min)", "ja": "整理間隔 (分)", "zh": "清理间隔 (分钟)" },
           "easy": {
-            "name": { "ko": "간격", "en": "Every", "ja": "間隔", "zh": "间隔" },
+            "name": { "ko": "간격", "en": "Interval", "ja": "間隔", "zh": "间隔" },
             "when": { "key": "auto.intervalOn" },
             "minutes": true
           }
@@ -283,7 +283,7 @@
     },
     {
       "id": "exclude",
-      "name": { "ko": "예외 프로그램", "en": "Programs left alone", "ja": "除外するプログラム", "zh": "排除的程序" },
+      "name": { "ko": "예외 프로그램", "en": "Excluded programs", "ja": "除外プログラム", "zh": "排除的程序" },
       "items": [
         {
           "key": "exclude.programs",
@@ -293,29 +293,29 @@
           "default": ["bloom.exe"],
           "max": 200,
           "suffix": ".exe",
-          "name": { "ko": "예외 프로그램", "en": "Programs left alone", "ja": "除外するプログラム", "zh": "排除的程序" },
+          "name": { "ko": "예외 프로그램", "en": "Excluded programs", "ja": "除外プログラム", "zh": "排除的程序" },
           "about": {
             "ko": "여기 둔 프로그램은 정리할 때 작업 집합을 비우지 않습니다",
-            "en": "Programs listed here keep their working sets when memory is cleaned",
-            "ja": "ここにあるプログラムは、解放のときにワーキングセットを空けません",
-            "zh": "清理内存时不清空此处列出的程序的工作集"
+            "en": "Programs listed here will not have their working sets trimmed during cleanup",
+            "ja": "ここに登録したプログラムは、整理時にワーキングセットを解放しません",
+            "zh": "此处列出的程序在清理时不会清空其工作集"
           },
-          "easy": { "name": { "ko": "프로그램", "en": "Program", "ja": "プログラム", "zh": "程序" } }
+          "easy": { "name": { "ko": "프로그램", "en": "Programs", "ja": "プログラム", "zh": "程序" } }
         }
       ],
       "easy": {
-        "name": { "ko": "정리하지 않을 프로그램", "en": "Programs left alone", "ja": "解放しないプログラム", "zh": "不清理的程序" },
+        "name": { "ko": "정리하지 않을 프로그램", "en": "Programs to exclude from cleanup", "ja": "整理しないプログラム", "zh": "不清理的程序" },
         "about": {
           "ko": "정리할 때 이 프로그램들의 메모리는 비우지 않습니다",
-          "en": "Cleaning leaves these programs' memory as it is",
-          "ja": "解放するとき、これらのプログラムのメモリは空けません",
-          "zh": "清理时不释放这些程序的内存"
+          "en": "Memory for these programs will not be trimmed during cleanup",
+          "ja": "整理時にこれらのプログラムのメモリは解放されません",
+          "zh": "清理时不会释放这些程序的内存"
         }
       }
     },
     {
       "id": "pill",
-      "name": { "ko": "모양", "en": "Look", "ja": "外観", "zh": "外观" },
+      "name": { "ko": "모양", "en": "Appearance", "ja": "外観", "zh": "外观" },
       "items": [
         {
           "key": "pill.theme",
@@ -329,9 +329,9 @@
           "name": { "ko": "테마", "en": "Theme", "ja": "テーマ", "zh": "主题" },
           "about": {
             "ko": "위젯과 창의 라이트·다크. Bloom 애드온으로 쓰면 Bloom의 테마를 따릅니다",
-            "en": "Light or dark for the widget and its window. As a Bloom add-on it follows Bloom's theme",
-            "ja": "ウィジェットとウィンドウのライト・ダーク。Bloom のアドオンとして使うと Bloom のテーマに従います",
-            "zh": "小组件及其窗口的浅色或深色。作为 Bloom 加载项使用时跟随 Bloom 的主题"
+            "en": "Light or dark theme for the widget and window. When used as a Bloom add-on, it follows Bloom's theme",
+            "ja": "ウィジェットとウィンドウのライト・ダークテーマ。Bloom アドオンとして使用する場合は Bloom のテーマに従います",
+            "zh": "小组件与窗口的浅色或深色主题。作为 Bloom 插件使用时将跟随 Bloom 的主题"
           }
         },
         {
@@ -341,9 +341,9 @@
           "name": { "ko": "유리 효과", "en": "Glass effect", "ja": "ガラス効果", "zh": "玻璃效果" },
           "about": {
             "ko": "끄면 창이 블러 없이 테마 색으로 칠해집니다",
-            "en": "When off, the window is filled in the theme's color without blur",
-            "ja": "オフにするとウィンドウをぼかさずテーマの色で塗ります",
-            "zh": "关闭后窗口不模糊，以主题颜色填充"
+            "en": "When disabled, the window uses a solid theme color without blur",
+            "ja": "オフにすると、ウィンドウはぼかしなしでテーマ色で塗りつぶされます",
+            "zh": "关闭后窗口无模糊效果，直接填充主题色"
           }
         }
       ]
