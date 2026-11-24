@@ -2295,7 +2295,7 @@ void RefreshClean() {
                           ? T(L"관리자 도우미를 다시 설치해야 합니다.", L"The administrator helper needs to be reinstalled.")
                           : T(L"관리자 도우미가 없어 내 프로그램의 작업 집합만 비웁니다.",
                               L"Without the administrator helper, only working sets of your own apps are cleaned."));
-    p.cleanButton.label.Text(g_cleaning ? T(L"정리 중…", L"Compacting…") : T(L"지금 정리", L"Clean Now"));
+    p.cleanButton.label.Text(g_cleaning ? T(L"정리 중…", L"Cleaning…") : T(L"지금 정리", L"Clean Now"));
     p.cleanButton.root.Opacity(g_cleaning ? 0.6 : 1.0);
     bool cleaned = g_prefs.lastCleanAt != 0;
     p.resultMark.Visibility(cleaned ? wux::Visibility::Visible : wux::Visibility::Collapsed);
