@@ -13,7 +13,7 @@ on:
 # winget's manifest for the same zip (MartinStorsjo.LLVM-MinGW.UCRT 20.1.3-20250417).
 env:
   PILL_REPO: hyeon1035298/PillTaskbar_BloomAddon
-  PILL_REF: 616f0eb47dfe6a11b47da4e9ca635b1d10407a67
+  PILL_REF: 0061e690271434708d860d458c71e02947e4ecf1
   LLVM_MINGW_VERSION: "20250417"
   LLVM_MINGW_FLAVOR: "ucrt-x86_64"
   LLVM_MINGW_SHA256: "3eba4da7af9e0ad3b736c9ac09f772d4d927da59bfb4e3688003ec21b3ed83fe"
