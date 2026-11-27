@@ -599,12 +599,32 @@ uint32_t ClockIndex(const wuxc::StackPanel& tray) {
     return children.Size();
 }
 
+// Whether the taskbar is at its monitor's top. An auto-hidden one keeps only a sliver on its own
+// monitor and reaches into a monitor stacked beside it, which MonitorFromWindow would pick: its
+// monitor is the one it covers least (a shown one covers one alone).
 bool TaskbarOnTop(HWND taskbar) {
-    RECT rc{};
-    MONITORINFO mi{sizeof(mi)};
-    if (!GetWindowRect(taskbar, &rc) || !GetMonitorInfoW(MonitorFromWindow(taskbar, MONITOR_DEFAULTTONEAREST), &mi))
-        return false;
-    return (rc.top + rc.bottom) / 2 < (mi.rcMonitor.top + mi.rcMonitor.bottom) / 2;
+    struct Look {
+        RECT bar;
+        RECT monitor;
+        LONG least;
+    } look{{}, {}, LONG_MAX};
+    if (!GetWindowRect(taskbar, &look.bar)) return false;
+    EnumDisplayMonitors(
+        nullptr, nullptr,
+        [](HMONITOR, HDC, LPRECT rc, LPARAM param) -> BOOL {
+            auto& l = *(Look*)param;
+            RECT part;
+            if (IntersectRect(&part, &l.bar, rc)) {
+                LONG area = (part.right - part.left) * (part.bottom - part.top);
+                if (area < l.least) {
+                    l.least = area;
+                    l.monitor = *rc;
+                }
+            }
+            return TRUE;
+        },
+        (LPARAM)&look);
+    return look.least != LONG_MAX && look.bar.top + look.bar.bottom < look.monitor.top + look.monitor.bottom;
 }
 
 // ---- running work on the taskbar thread ---------------------------------------
