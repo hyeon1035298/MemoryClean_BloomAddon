@@ -545,11 +545,15 @@ wux::FrameworkElement TaskbarElement(HWND hwnd) {
         if (host[1]) std__Ref_count_base__Decref_Original(host[1]);
         return nullptr;
     }
-    // 48:83EC 28 | sub rsp,28 ; 48:83C1 48 | add rcx,48 <- the element's offset in TaskbarHost.
-    // Another prologue means another layout: no element rather than a guessed field.
+    // 48:83EC 28 | sub rsp,28 ; 48:83C1 xx | add rcx,xx <- the element's offset in TaskbarHost.
+    // Another prologue (another mod's hook, a reordered build) means another layout: no
+    // element rather than a guessed field.
     const BYTE* b = (const BYTE*)TaskbarHost_FrameHeight_Original;
     if (!(b[0] == 0x48 && b[1] == 0x83 && b[2] == 0xEC && b[4] == 0x48 && b[5] == 0x83 && b[6] == 0xC1 &&
           b[7] <= 0x7F)) {
+        static bool logged = false;
+        if (!std::exchange(logged, true))
+            Wh_Log(L"unsupported TaskbarHost::FrameHeight %02X %02X %02X %02X: no widget", b[0], b[1], b[2], b[3]);
         std__Ref_count_base__Decref_Original(host[1]);
         return nullptr;
     }
@@ -1472,7 +1476,11 @@ void PlaceWidgets() {
         auto it = std::ranges::find_if(g_widgets, [&](auto& w) { return w->taskbar == hwnd; });
         if (it != g_widgets.end() && Parent((*it)->root) && (*it)->root.IsLoaded()) continue;
         auto tray = TrayPanel(hwnd);
-        if (!tray) continue;
+        if (!tray) {
+            static bool logged = false;
+            if (!std::exchange(logged, true)) Wh_Log(L"no tray panel on %p yet", hwnd);
+            continue;
+        }
         if (it == g_widgets.end()) {
             g_widgets.push_back(BuildWidget(hwnd));
             it = g_widgets.end() - 1;
